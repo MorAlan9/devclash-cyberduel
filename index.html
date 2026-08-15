@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ctOS METAVERSE // FIX CAM</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- TensorFlow.js y COCO-SSD -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+</head>
+<body>
+
+<div id="ctos-viewport">
+    <video id="webcam" autoplay playsinline muted style="display:none;"></video>
+    <canvas id="stageCanvas" width="960" height="640"></canvas>
+
+    <div class="scanlines"></div>
+
+    <!-- HUD SUPERIOR MULTIJUGADOR -->
+    <div class="ctos-header">
+        <div class="badge">
+            <span class="live-pulse">●</span> METAVERSE DEDSEC NET // <strong id="online-counter">1 AGENTE EN LÍNEA</strong>
+        </div>
+
+        <!-- CONTROLES Y REFRESCADO DE CÁMARA -->
+        <div class="camera-box">
+            <button id="btn-request-cam" class="cyber-btn-cam">📷 ACTIVAR CÁMARA</button>
+            <select id="camera-select" class="cyber-select" style="display:none;"></select>
+        </div>
+    </div>
+
+    <!-- PANEL LATERAL DE PERSONALIZACIÓN Y NODO MMO -->
+    <div class="ctos-panel">
+        <span class="panel-tag">🌍 CIUDAD METAVERSE</span>
+        <button class="city-btn active" data-city="buenosaires">🏛️ BUENOS AIRES 2077</button>
+        <button class="city-btn" data-city="tokyo">⛩️ TOKYO SHIBUYA</button>
+        <button class="city-btn" data-city="chicago">🏙️ CHICAGO ctOS</button>
+
+        <span class="panel-tag" style="margin-top:10px;">🎭 ATAVÍO HACKER</span>
+        <button class="outfit-btn active" data-outfit="dedsec">🏴‍☠️ MÁSCARA Y CAPUCHA</button>
+        <button class="outfit-btn" data-outfit="visor">⚡ VISOR CYBER</button>
+        <button class="outfit-btn" data-outfit="none">👤 SIN MÁSCARA</button>
+
+        <span class="panel-tag" style="margin-top:10px;">💾 REGISTRO PERSISTENTE</span>
+        <button id="btn-save-avatar" class="action-btn">📸 REGISTRAR MI AVATAR</button>
+        <button id="btn-clear-db" class="action-btn danger">🗑️ LIMPIAR CIUDAD</button>
+    </div>
+
+    <!-- PANEL DERECHO DE CHAT / HACKEO COLECTIVO -->
+    <div class="ctos-hack-panel">
+        <span class="panel-tag">💬 CHAT EN TIEMPO REAL</span>
+        <div id="chat-logs" class="chat-box"></div>
+        <div class="chat-input-group">
+            <input type="text" id="chat-input" placeholder="Enviar mensaje..." maxlength="35">
+            <button id="btn-send-chat">▶</button>
+        </div>
+
+        <span class="panel-tag" style="margin-top:10px;">⚡ CONTROL COLECTIVO</span>
+        <button id="btn-hack-lights" class="hack-btn">🚦 HACKEAR SEMÁFOROS</button>
+        <button id="btn-hack-blackout" class="hack-btn">💥 DISPARAR APAGÓN</button>
+    </div>
+
+    <!-- FOOTER E INDICADORES -->
+    <div class="ctos-footer">
+        <div class="status-pill" id="status-text">HACÉ CLIC EN "ACTIVAR CÁMARA" O MOVETE CON TECLADO</div>
+        <div class="controls-hint">
+            🕹️ Moverse: <strong>WASD / FLECHAS</strong> | Escribir: <strong>ENTER</strong>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

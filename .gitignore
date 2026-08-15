@@ -8,3 +8,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Archivos del sistema y editores
+
+#  dependencias
+node_modules/
