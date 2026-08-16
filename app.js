@@ -1111,4 +1111,28 @@ function renderGyroAvatar(x, y) {
     ctx.fillText(`AGENTE [${myAgentId}]`, x - 50, y + 70);
 }
 
+function closeChatModal() {
+    if (chatModal) chatModal.style.display = 'none';
+
+    if (currentChatNpc) {
+        currentChatNpc.isPaused = false;
+        currentChatNpc = null;
+    }
+
+    // Reinicia el historial y limpia la pantalla para que la próxima interacción empiece desde 0
+    activeConversationHistory = [];
+    if (chatHistory) chatHistory.innerHTML = '';
+
+    // Habilitar campos de texto por si quedaron bloqueados
+    if (chatUserInput) {
+        chatUserInput.disabled = false;
+        chatUserInput.placeholder = "Enviar mensaje encriptado...";
+    }
+    if (btnSendChat) btnSendChat.disabled = false;
+
+    if (typeof syncUI === 'function') {
+        syncUI('exploration');
+    }
+}
+
 initSystem();
