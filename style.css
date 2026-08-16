@@ -330,6 +330,47 @@ body {
 .controls-hint { font-size: 9px; color: #94a3b8; background: rgba(0,0,0,0.7); padding: 3px 10px; border-radius: 10px; }
 .controls-hint strong { color: var(--cyan); }
 
+/* CAPAS TRANSPARENTES QUE NO DEBEN INTERCEPTAR CLICS */
+#stageCanvas, .scanlines {
+    pointer-events: none !important;
+}
+
+/* ASEGURAR QUE LOS ELEMENTOS INTERACTIVOS RECIBAN CLICS/TOQUES */
+button, input, select, .action-btn, .poi-action-btn,
+.action-btn-secondary, .modal-card, .avatar-preset-card,
+.mission-card, .close-btn, .node-btn {
+    pointer-events: auto !important;
+    touch-action: manipulation;
+}
+
+/* FIX PARA MODALES: QUE PERMITAN INTERACCIÓN INTERNA */
+.modal-overlay {
+    pointer-events: auto;
+}
+
+/* JOYSTICK PARA CELULARES */
+.mobile-dpad {
+    display: none;
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 90;
+    flex-direction: column;
+    align-items: center;
+}
+
+.dpad-row { display: flex; gap: 5px; }
+
+.dpad-btn {
+    width: 44px; height: 44px;
+    background: rgba(3, 7, 18, 0.85);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    font-size: 16px;
+    border-radius: 8px;
+    touch-action: manipulation;
+}
+
 /* ADAPTACIÓN PARA CELULARES Y TABLETS (PANTALLAS CHICAS) */
 @media (max-width: 768px) {
     #ctos-viewport {
@@ -380,4 +421,6 @@ body {
         grid-template-columns: repeat(4, 1fr);
         gap: 4px;
     }
+
+    .mobile-dpad { display: flex; }
 }

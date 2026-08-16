@@ -99,7 +99,7 @@ const cropCanvas = document.createElement('canvas');
 cropCanvas.width = 110; cropCanvas.height = 140;
 const cropCtx = cropCanvas.getContext('2d');
 
-// 1. INICIALIZACIÓN
+// 1. INICIALIZACIÓN CON GEOLOCALIZACIÓN REAL (COMPATIBLE CON CELULAR Y HTTPS)
 function initSystem() {
     renderAvatarPresetsUI();
     checkActiveSession();
@@ -114,11 +114,29 @@ function initSystem() {
         antialias: true
     });
 
+    if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const userLat = position.coords.latitude;
+                const userLng = position.coords.longitude;
+
+                map.flyTo({ center: [userLng, userLat], zoom: 16 });
+                generatePokemonGoStops({ lat: userLat, lng: userLng });
+                generateLocalMissions({ lat: userLat, lng: userLng });
+                spawnMapNPCs({ lat: userLat, lng: userLng });
+
+                statusText.innerText = "GPS LOCALIZADO // POSICIÓN EN TIEMPO REAL";
+            },
+            (error) => {
+                console.warn("Geolocalización denegada o no disponible:", error.message);
+                statusText.innerText = "GPS NO DISPONIBLE // USANDO UBICACIÓN POR DEFECTO";
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    }
+
     map.on('style.load', () => {
         map.setProjection({ name: 'globe' });
-        generatePokemonGoStops(map.getCenter());
-        generateLocalMissions(map.getCenter());
-        spawnMapNPCs(map.getCenter());
     });
 
     renderAvatarPreview();
@@ -590,6 +608,20 @@ btnSearch.onclick = async () => {
 const keys = {};
 window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+// CONTROLES TÁCTILES MÓVILES
+const bindTouchControl = (btnId, keyName) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[keyName] = true; });
+    btn.addEventListener('pointerup', (e) => { e.preventDefault(); keys[keyName] = false; });
+    btn.addEventListener('pointerleave', (e) => { e.preventDefault(); keys[keyName] = false; });
+};
+
+bindTouchControl('btn-up', 'w');
+bindTouchControl('btn-down', 's');
+bindTouchControl('btn-left', 'a');
+bindTouchControl('btn-right', 'd');
 
 function handleMapMovement() {
     if (!map || isFlying || isCctvMode) return;
