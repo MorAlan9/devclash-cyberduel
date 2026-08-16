@@ -77,7 +77,7 @@ body {
 .live-pulse { color: var(--magenta); animation: pulse 0.8s infinite alternate; }
 @keyframes pulse { 0% { opacity: 0.2; } 100% { opacity: 1; } }
 
-.search-box { display: flex; gap: 4px; pointer-events: auto; flex: 1; max-width: 320px; }
+.search-box { display: flex; gap: 4px; pointer-events: auto; flex: 1; max-width: 280px; }
 .search-box input {
     width: 100%; background: var(--panel-bg); border: 1px solid var(--cyan);
     color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 11px; outline: none;
@@ -146,7 +146,41 @@ body {
 .mission-title { font-size: 10px; font-weight: bold; color: var(--cyan); }
 .mission-desc { font-size: 8px; color: #cbd5e1; }
 
-/* MODAL MINIJUEGO */
+/* LAYOUT FLOTANTE ESTILO POKÉMON GO */
+.poi-card-up {
+    position: absolute; bottom: 50px; left: 50%;
+    transform: translateX(-50%);
+    width: 380px; background: var(--panel-bg);
+    border: 2px solid var(--cyan); border-radius: 10px;
+    box-shadow: 0 0 35px var(--cyan);
+    padding: 16px; z-index: 80;
+    animation: slideUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes slideUp {
+    0% { transform: translate(-50%, 80px); opacity: 0; }
+    100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.poi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.poi-badge { background: var(--cyan); color: #000; font-size: 9px; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
+.poi-card-up h3 { font-size: 13px; color: #fff; margin-bottom: 6px; }
+.poi-desc { font-size: 10px; color: #94a3b8; margin-bottom: 12px; }
+
+.poi-loot-box { display: flex; gap: 8px; margin-bottom: 14px; }
+.loot-item {
+    flex: 1; background: rgba(0, 240, 255, 0.1); border: 1px solid var(--border-glow);
+    padding: 6px; border-radius: 4px; font-size: 9px; color: var(--yellow); font-weight: bold; text-align: center;
+}
+
+.poi-action-btn {
+    width: 100%; background: var(--cyan); border: none; color: #000;
+    font-weight: bold; padding: 8px; font-size: 11px; border-radius: 4px; cursor: pointer;
+    box-shadow: 0 0 12px var(--cyan);
+}
+.poi-action-btn:hover { filter: brightness(1.2); }
+
+/* MODALES Y AUTH */
 .modal-overlay {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(2, 4, 10, 0.92); z-index: 100; backdrop-filter: blur(8px);
@@ -156,13 +190,123 @@ body {
     background: var(--panel-bg); border: 2px solid var(--cyan);
     box-shadow: 0 0 40px var(--cyan); padding: 20px; border-radius: 8px; width: 340px; text-align: center;
 }
+.modal-large { width: 500px; text-align: left; }
+
 .modal-header {
     display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 10px; border-bottom: 1px solid var(--border-glow); padding-bottom: 6px;
+    margin-bottom: 12px; border-bottom: 1px solid var(--border-glow); padding-bottom: 6px;
 }
 .modal-header h3 { font-size: 11px; color: var(--cyan); }
 .close-btn { cursor: pointer; color: var(--magenta); font-weight: bold; }
-.modal-desc { font-size: 9px; color: #94a3b8; margin-bottom: 15px; }
+
+/* PANTALLA DE AUTHENTICACIÓN */
+.auth-card {
+    width: 440px !important;
+    border: 2px solid var(--cyan);
+    box-shadow: 0 0 50px rgba(0, 240, 255, 0.4);
+}
+
+.cyber-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid var(--cyan);
+    color: #fff;
+    padding: 10px 12px;
+    font-size: 11px;
+    border-radius: 4px;
+    outline: none;
+    margin-bottom: 8px;
+}
+
+.cyber-input:focus {
+    border-color: var(--magenta);
+    box-shadow: 0 0 10px var(--magenta);
+}
+
+/* GRILLA DE 8 AVATARES */
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 10px 0 16px 0;
+}
+
+.avatar-preset-card {
+    width: 100%;
+    height: 75px;
+    background: #020617;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.avatar-preset-card canvas {
+    width: 45px;
+    height: 45px;
+    border-radius: 4px;
+}
+
+.avatar-preset-card span {
+    font-size: 7px;
+    color: #94a3b8;
+    margin-top: 3px;
+    text-transform: uppercase;
+}
+
+.avatar-preset-card:hover, .avatar-preset-card.selected {
+    border-color: var(--cyan);
+    background: rgba(0, 240, 255, 0.15);
+    box-shadow: 0 0 12px var(--cyan);
+}
+
+.avatar-preset-card.selected span {
+    color: var(--cyan);
+    font-weight: bold;
+}
+
+.auth-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn-secondary {
+    flex: 1;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid var(--magenta);
+    color: var(--magenta);
+    padding: 8px;
+    font-size: 10px;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.action-btn-secondary:hover {
+    background: var(--magenta);
+    color: #fff;
+}
+
+.avatar-editor-grid { display: flex; gap: 16px; align-items: center; }
+.editor-preview-box {
+    width: 160px; height: 200px; background: #020617; border: 2px solid var(--cyan);
+    border-radius: 6px; display: flex; justify-content: center; align-items: center;
+    box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+.editor-controls-box { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.cyber-select-full {
+    width: 100%; background: rgba(0,0,0,0.8); border: 1px solid var(--cyan);
+    color: var(--cyan); padding: 6px; font-size: 10px; outline: none; border-radius: 4px;
+}
+.action-btn-full {
+    width: 100%; background: var(--magenta); border: none; color: #fff;
+    padding: 6px; font-size: 10px; font-weight: bold; border-radius: 4px; cursor: pointer;
+}
 
 .pattern-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
 .node-btn {
@@ -185,3 +329,55 @@ body {
 }
 .controls-hint { font-size: 9px; color: #94a3b8; background: rgba(0,0,0,0.7); padding: 3px 10px; border-radius: 10px; }
 .controls-hint strong { color: var(--cyan); }
+
+/* ADAPTACIÓN PARA CELULARES Y TABLETS (PANTALLAS CHICAS) */
+@media (max-width: 768px) {
+    #ctos-viewport {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    /* Ajuste de controles superiores */
+    .ctos-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+
+    .search-box {
+        max-width: 100%;
+    }
+
+    /* Reducción de paneles laterales para no tapar la vista del mapa */
+    .ctos-panel {
+        width: 160px;
+        top: 110px;
+        font-size: 8px;
+        padding: 6px;
+    }
+
+    .ctos-panel-right {
+        width: 160px;
+        top: 110px;
+        padding: 6px;
+    }
+
+    /* Tarjeta estilo Pokémon GO adaptable a pantalla táctil */
+    .poi-card-up {
+        width: 90%;
+        bottom: 60px;
+        padding: 12px;
+    }
+
+    .modal-large, .auth-card {
+        width: 92% !important;
+        padding: 14px;
+    }
+
+    .preset-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+    }
+}

@@ -10,15 +10,56 @@ const searchInput = document.getElementById('search-input');
 const btnSearch = document.getElementById('btn-search');
 
 const xpVal = document.getElementById('xp-val');
+const stopsVal = document.getElementById('stops-val');
 const pvpVal = document.getElementById('pvp-val');
 const missionsList = document.getElementById('missions-list');
 const territoryFill = document.getElementById('territory-fill');
 const territoryPct = document.getElementById('territory-pct');
 
+// AUTHENTICACIÓN Y 8 PRESETS
+const authOverlay = document.getElementById('auth-overlay');
+const authUsername = document.getElementById('auth-username');
+const authPassword = document.getElementById('auth-password');
+const btnLogin = document.getElementById('btn-login');
+const btnRegister = document.getElementById('btn-register');
+const avatarPresetsGrid = document.getElementById('avatar-presets-grid');
+
+let selectedAvatarPresetIndex = 0;
+
+const AVATAR_PRESETS = [
+    { name: "DedSec Classic", bg: "#020617", main: "#ff0055", eyes: "X X", accent: "#00f0ff" },
+    { name: "Visor Neon", bg: "#090d16", main: "#00f0ff", eyes: "═══", accent: "#facc15" },
+    { name: "Matriz AI", bg: "#022c22", main: "#10b981", eyes: "1 0", accent: "#00f0ff" },
+    { name: "Glitch Ghost", bg: "#1e1b4b", main: "#a855f7", eyes: "Ø Ø", accent: "#ff0055" },
+    { name: "Cyber Rogue", bg: "#1f1d03", main: "#facc15", eyes: "▲ ▲", accent: "#ff0055" },
+    { name: "Netrunner", bg: "#111827", main: "#38bdf8", eyes: "● ●", accent: "#10b981" },
+    { name: "Red Hacker", bg: "#2a0808", main: "#ef4444", eyes: "≡ ≡", accent: "#facc15" },
+    { name: "Anónimo ctOS", bg: "#0f172a", main: "#64748b", eyes: "[ ]", accent: "#00f0ff" }
+];
+
+// MODAL CREADOR DE AVATAR
+const btnOpenAvatarEditor = document.getElementById('btn-open-avatar-editor');
+const avatarModal = document.getElementById('avatar-modal');
+const closeAvatarModal = document.getElementById('close-avatar-modal');
+const editorSourceSelect = document.getElementById('editor-source-select');
+const editorStyleSelect = document.getElementById('editor-style-select');
+const webcamSnapGroup = document.getElementById('webcam-snap-group');
+const btnSnapPhoto = document.getElementById('btn-snap-photo');
+const btnSaveCustomAvatar = document.getElementById('btn-save-custom-avatar');
+const avatarPreviewCanvas = document.getElementById('avatarPreviewCanvas');
+const previewCtx = avatarPreviewCanvas.getContext('2d');
+
+// POPUP POKÉMON GO
+const poiPopupCard = document.getElementById('poi-popup-card');
+const closePoi = document.getElementById('close-poi');
+const poiTitle = document.getElementById('poi-title');
+const poiDesc = document.getElementById('poi-desc');
+const btnClaimPoi = document.getElementById('btn-claim-poi');
+
+// CCTV Y MODAL MINIJUEGO
 const cctvOverlay = document.getElementById('cctv-overlay');
 const cctvIdSpan = document.getElementById('cctv-id');
 const btnExitCctv = document.getElementById('btn-exit-cctv');
-
 const hackModal = document.getElementById('hack-modal');
 const closeModal = document.getElementById('close-modal');
 const patternGrid = document.getElementById('pattern-grid');
@@ -31,24 +72,26 @@ let userPersonBox = null;
 
 let myAgentId = `AGENTE_${Math.floor(1000 + Math.random() * 9000)}`;
 let playerXP = 0;
+let visitedStops = 0;
 let pvpWins = 0;
 let territoryControlPct = 35;
 
-// MODO AVATAR (NO OBLIGATORIO WEBCAM)
-let activeAvatarMode = 'synth2d';
-let capturedPhotoDataUrl = null;
+// AVATAR PROCESADO CUSTOM
+let activeAvatarSource = 'preset';
+let activeAvatarStyle = 'cyberpunk';
+let customAvatarSpriteUrl = null;
 
-// MOTOR 3D Y CÁMARA REMOTA CCTV
+// MOTOR 3D Y NAVEGACIÓN
 let map = null;
 let isFlying = false;
 let isCctvMode = false;
 let currentHeadingAngle = 0;
 
-// MISIONES, NPCS Y DUELOS 1V1
+// PARADAS Y MISIONES
+let poiStops = [];
+let currentActivePoi = null;
 let missions = [];
-let npcs = []; // NPCs offline con IA
-let onlinePlayers = []; // Jugadores cruzados
-let currentActiveMission = null;
+let npcs = [];
 let generatedSequence = [];
 let userSequence = [];
 
@@ -56,9 +99,10 @@ const cropCanvas = document.createElement('canvas');
 cropCanvas.width = 110; cropCanvas.height = 140;
 const cropCtx = cropCanvas.getContext('2d');
 
-// 1. INICIALIZAR MOTOR Y MAPA GLOBO 3D
+// 1. INICIALIZACIÓN
 function initSystem() {
-    loadProfileData();
+    renderAvatarPresetsUI();
+    checkActiveSession();
 
     map = new maplibregl.Map({
         container: 'map',
@@ -72,38 +116,252 @@ function initSystem() {
 
     map.on('style.load', () => {
         map.setProjection({ name: 'globe' });
+        generatePokemonGoStops(map.getCenter());
         generateLocalMissions(map.getCenter());
         spawnMapNPCs(map.getCenter());
     });
 
+    renderAvatarPreview();
     requestAnimationFrame(renderLoop);
     initAIAsync();
 }
 
-// 2. SISTEMA DE AVATAR Y WEBCAM OPCIONAL
-avatarModeSelect.addEventListener('change', (e) => {
-    activeAvatarMode = e.target.value;
-    if (activeAvatarMode === 'webcam') {
-        cameraSelect.style.display = 'inline-block';
-        btnTakePhoto.style.display = 'inline-block';
+// 2. SISTEMA DE AUTHENTICACIÓN Y 8 AVATARES PRESELECCIONADOS
+function renderAvatarPresetsUI() {
+    avatarPresetsGrid.innerHTML = '';
+
+    AVATAR_PRESETS.forEach((preset, idx) => {
+        const card = document.createElement('div');
+        card.className = `avatar-preset-card ${idx === 0 ? 'selected' : ''}`;
+
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 60; pCanvas.height = 60;
+        drawPresetSprite(pCanvas.getContext('2d'), preset);
+
+        const label = document.createElement('span');
+        label.innerText = preset.name;
+
+        card.appendChild(pCanvas);
+        card.appendChild(label);
+
+        card.onclick = () => {
+            document.querySelectorAll('.avatar-preset-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            selectedAvatarPresetIndex = idx;
+            applySelectedPresetToPlayer(preset, pCanvas.toDataURL());
+        };
+
+        avatarPresetsGrid.appendChild(card);
+    });
+
+    applySelectedPresetToPlayer(AVATAR_PRESETS[0], null);
+}
+
+function drawPresetSprite(pCtx, preset) {
+    pCtx.fillStyle = preset.bg;
+    pCtx.fillRect(0, 0, 60, 60);
+
+    pCtx.fillStyle = preset.main;
+    pCtx.fillRect(15, 18, 30, 24);
+
+    pCtx.fillStyle = preset.accent;
+    pCtx.fillRect(18, 25, 24, 10);
+
+    pCtx.fillStyle = '#000';
+    pCtx.font = 'bold 8px Consolas';
+    pCtx.fillText(preset.eyes, 22, 33);
+}
+
+function applySelectedPresetToPlayer(preset, dataUrl) {
+    customAvatarSpriteUrl = dataUrl;
+    activeAvatarSource = 'preset';
+}
+
+btnRegister.onclick = () => {
+    const user = authUsername.value.trim();
+    const pass = authPassword.value.trim();
+
+    if (!user || !pass) {
+        alert("Ingresá un nombre de agente y contraseña válidos.");
+        return;
+    }
+
+    const userData = {
+        username: user,
+        password: pass,
+        presetIndex: selectedAvatarPresetIndex,
+        xp: 0,
+        stops: 0,
+        pvp: 0,
+        pct: 35
+    };
+
+    localStorage.setItem(`ctos_user_${user}`, JSON.stringify(userData));
+    localStorage.setItem('ctos_session_active', user);
+
+    myAgentId = user.toUpperCase();
+    authOverlay.style.display = 'none';
+    statusText.innerText = `AGENTE [${myAgentId}] REGISTRADO Y SESIÓN INICIADA`;
+};
+
+btnLogin.onclick = () => {
+    const user = authUsername.value.trim();
+    const pass = authPassword.value.trim();
+
+    const saved = localStorage.getItem(`ctos_user_${user}`);
+    if (!saved) {
+        alert("El agente no existe. Registrate primero.");
+        return;
+    }
+
+    const parsed = JSON.parse(saved);
+    if (parsed.password !== pass) {
+        alert("Contraseña de encriptación incorrecta.");
+        return;
+    }
+
+    localStorage.setItem('ctos_session_active', user);
+    myAgentId = user.toUpperCase();
+    playerXP = parsed.xp || 0;
+    visitedStops = parsed.stops || 0;
+    pvpWins = parsed.pvp || 0;
+    territoryControlPct = parsed.pct || 35;
+
+    updateProfileUI();
+    authOverlay.style.display = 'none';
+    statusText.innerText = `BIENVENIDO DE NUEVO, AGENTE [${myAgentId}]`;
+};
+
+function checkActiveSession() {
+    const activeUser = localStorage.getItem('ctos_session_active');
+    if (activeUser) {
+        const saved = localStorage.getItem(`ctos_user_${activeUser}`);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            myAgentId = activeUser.toUpperCase();
+            playerXP = parsed.xp || 0;
+            visitedStops = parsed.stops || 0;
+            pvpWins = parsed.pvp || 0;
+            territoryControlPct = parsed.pct || 35;
+
+            updateProfileUI();
+            authOverlay.style.display = 'none';
+        }
+    }
+}
+
+// 3. PARADAS POKÉMON GO
+function generatePokemonGoStops(center) {
+    poiStops = [
+        { id: 101, title: "PARADA DE CONOCIMIENTO #01", desc: "Nodo de datos históricos e IA sobre la ciudad.", lat: center.lat + 0.0012, lng: center.lng + 0.001, claimed: false },
+        { id: 102, title: "SPAWN DE DATOS CIBERNÉTICOS", desc: "Chips encriptados listos para recolectar.", lat: center.lat - 0.001, lng: center.lng - 0.0015, claimed: false },
+        { id: 103, title: "PARADA HACKER DE APRENDIZAJE", desc: "Lección sobre lógica de redes y scrapers.", lat: center.lat + 0.0018, lng: center.lng - 0.0012, claimed: false }
+    ];
+}
+
+function checkPoiProximity() {
+    if (!map || isFlying) return;
+    const center = map.getCenter();
+
+    poiStops.forEach(stop => {
+        const dist = Math.hypot(stop.lat - center.lat, stop.lng - center.lng);
+        if (dist < 0.0012 && !stop.claimed && poiPopupCard.style.display === 'none') {
+            openPoiPopup(stop);
+        }
+    });
+}
+
+function openPoiPopup(stop) {
+    currentActivePoi = stop;
+    poiTitle.innerText = stop.title;
+    poiDesc.innerText = stop.desc;
+    poiPopupCard.style.display = 'block';
+    statusText.innerText = `📍 ACABAS DE INGRESAR A UNA PARADA DE CONOCIMIENTO`;
+}
+
+btnClaimPoi.onclick = () => {
+    if (currentActivePoi) {
+        currentActivePoi.claimed = true;
+        playerXP += 100;
+        visitedStops += 1;
+        territoryControlPct = Math.min(100, territoryControlPct + 5);
+        saveProfileData();
+
+        poiPopupCard.style.display = 'none';
+        statusText.innerText = "✔ CONOCIMIENTO Y DATOS EXTRAÍDOS CON ÉXITO";
+    }
+};
+
+closePoi.onclick = () => poiPopupCard.style.display = 'none';
+
+// 4. ESTUDIO CREADOR DE AVATAR
+btnOpenAvatarEditor.onclick = () => avatarModal.style.display = 'flex';
+closeAvatarModal.onclick = () => avatarModal.style.display = 'none';
+
+editorSourceSelect.addEventListener('change', (e) => {
+    activeAvatarSource = e.target.value;
+    if (activeAvatarSource === 'webcam') {
+        webcamSnapGroup.style.display = 'block';
         setupCameras();
     } else {
-        cameraSelect.style.display = 'none';
-        btnTakePhoto.style.display = 'none';
+        webcamSnapGroup.style.display = 'none';
         stopCamera();
     }
+    renderAvatarPreview();
 });
 
-btnTakePhoto.addEventListener('click', () => {
-    if (cameraActive && video.videoWidth > 0) {
-        const snapCanvas = document.createElement('canvas');
-        snapCanvas.width = 110; snapCanvas.height = 140;
-        const snapCtx = snapCanvas.getContext('2d');
-        snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
-        capturedPhotoDataUrl = snapCanvas.toDataURL();
-        statusText.innerText = "¡FOTO DE PERFIL CAPTURADA Y RENDERIZADA!";
-    }
+editorStyleSelect.addEventListener('change', (e) => {
+    activeAvatarStyle = e.target.value;
+    renderAvatarPreview();
 });
+
+btnSnapPhoto.onclick = () => {
+    if (cameraActive && video.videoWidth > 0) {
+        renderAvatarPreview(true);
+        statusText.innerText = "📸 FOTO CAPTURADA Y RENDERIZADA EN ESTILO CIBERNÉTICO";
+    }
+};
+
+btnSaveCustomAvatar.onclick = () => {
+    customAvatarSpriteUrl = avatarPreviewCanvas.toDataURL();
+    avatarModal.style.display = 'none';
+    statusText.innerText = "✔ AVATAR PERSONALIZADO Y PROCESADO APLICADO AL PERFIL";
+};
+
+function renderAvatarPreview(snap = false) {
+    previewCtx.clearRect(0, 0, 160, 200);
+
+    if (activeAvatarStyle === 'matrix') {
+        previewCtx.fillStyle = '#022c22';
+    } else if (activeAvatarStyle === 'pixel') {
+        previewCtx.fillStyle = '#1e1b4b';
+    } else {
+        previewCtx.fillStyle = '#020617';
+    }
+    previewCtx.fillRect(0, 0, 160, 200);
+
+    if (activeAvatarSource === 'webcam' && (snap || cameraActive) && video.videoWidth > 0) {
+        previewCtx.drawImage(video, 0, 0, 160, 200);
+    } else if (activeAvatarSource === 'synth3d') {
+        previewCtx.fillStyle = '#00f0ff'; previewCtx.font = 'bold 14px Consolas';
+        previewCtx.fillText("CYBER-SPRITE 3D", 20, 100);
+    } else {
+        previewCtx.fillStyle = '#ff0055'; previewCtx.font = 'bold 14px Consolas';
+        previewCtx.fillText("SINTÉTICO 2D", 25, 100);
+    }
+
+    if (activeAvatarStyle === 'cyberpunk') {
+        previewCtx.fillStyle = 'rgba(255, 0, 85, 0.85)';
+        previewCtx.fillRect(45, 50, 70, 25);
+        previewCtx.fillStyle = '#000'; previewCtx.font = 'bold 14px Consolas';
+        previewCtx.fillText("X X", 65, 68);
+    } else if (activeAvatarStyle === 'matrix') {
+        previewCtx.fillStyle = '#10b981';
+        for (let i = 0; i < 6; i++) {
+            previewCtx.fillText("1 0 1 0", 20 + i * 18, 40 + i * 25);
+        }
+    }
+}
 
 function stopCamera() {
     if (currentStream) currentStream.getTracks().forEach(t => t.stop());
@@ -148,7 +406,7 @@ function initAIAsync() {
     cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(model => {
         aiModel = model;
         setInterval(async () => {
-            if (activeAvatarMode === 'webcam' && cameraActive && video.videoWidth > 0 && !video.paused) {
+            if (activeAvatarSource === 'webcam' && cameraActive && video.videoWidth > 0 && !video.paused) {
                 try {
                     const predictions = await aiModel.detect(video, 2, 0.35);
                     const person = predictions.find(p => p.class === 'person');
@@ -159,15 +417,27 @@ function initAIAsync() {
     });
 }
 
-// 3. MISIONES, EMPRESAS, CLUBES Y CÁMARAS CCTV REMOTAS
+// 5. MISIONES Y NPCS
 function generateLocalMissions(center) {
     missions = [
         { id: 1, type: 'ANTENA', title: "ANTENA ctOS", desc: "Desbloquear calles del distrito", lat: center.lat + 0.0015, lng: center.lng + 0.002, done: false },
         { id: 2, type: 'EMPRESA', title: "CORPORACIÓN DATASEC", desc: "Hackear base de datos", lat: center.lat - 0.0012, lng: center.lng - 0.0018, done: false },
-        { id: 3, type: 'CCTV', title: "CÁMARA DE VIGILANCIA", desc: "Espiar sin ir presencialmente", lat: center.lat + 0.002, lng: center.lng - 0.001, done: false },
-        { id: 4, type: 'CLUB', title: "CLUB HACKER UNDER", desc: "Duelo 1v1 y dominación", lat: center.lat - 0.0018, lng: center.lng + 0.0015, done: false }
+        { id: 3, type: 'CCTV', title: "CÁMARA DE VIGILANCIA", desc: "Espiar sin ir presencialmente", lat: center.lat + 0.002, lng: center.lng - 0.001, done: false }
     ];
     renderMissionsList();
+}
+
+function spawnMapNPCs(center) {
+    npcs = [];
+    for (let i = 0; i < 5; i++) {
+        npcs.push({
+            id: `NPC_IA_${i+1}`,
+            lat: center.lat + (Math.random() - 0.5) * 0.005,
+            lng: center.lng + (Math.random() - 0.5) * 0.005,
+            vx: (Math.random() - 0.5) * 0.00005,
+            vy: (Math.random() - 0.5) * 0.00005
+        });
+    }
 }
 
 function renderMissionsList() {
@@ -191,63 +461,37 @@ function renderMissionsList() {
     });
 }
 
-// RECONOCIMIENTO REMOTO POR CÁMARA CCTV
 function connectToCCTV(mission) {
     isCctvMode = true;
     cctvIdSpan.innerText = mission.id;
     cctvOverlay.style.display = 'block';
     map.flyTo({ center: [mission.lng, mission.lat], zoom: 18, pitch: 75 });
-    statusText.innerText = `CÁMARA EN VIVO HACKEADA // ANALIZANDO TAREAS REMOTAS`;
 }
 
 btnExitCctv.onclick = () => {
     isCctvMode = false;
     cctvOverlay.style.display = 'none';
-    statusText.innerText = "DESCONECTADO DE CCTV // REGRESANDO A MARCHA";
 };
 
-// HERRAMIENTAS SCRAPER Y BD
 document.getElementById('btn-run-scraper').onclick = () => {
     statusText.innerText = "🕷️ SCRAPER ACTIVO: EXTRACCIÓN DE NODOS Y FINANZAS URBANAS...";
     setTimeout(() => {
-        playerXP += 80;
-        territoryControlPct = Math.min(100, territoryControlPct + 5);
+        playerXP += 80; territoryControlPct = Math.min(100, territoryControlPct + 5);
         saveProfileData();
         statusText.innerText = "✔ DATOS EXTRAÍDOS // EXP +80 // DOMINIO AUMENTADO";
-    }, 1500);
+    }, 1200);
 };
 
-document.getElementById('btn-hack-db').onclick = () => {
-    openHackMinigame({ id: 99, title: "BASE DE DATOS REGIONAL", desc: "Infiltrar software central" });
-};
+document.getElementById('btn-hack-db').onclick = () => openHackMinigame({ id: 99, title: "BASE DE DATOS REGIONAL", desc: "Infiltrar software central" });
 
-// 4. GENERACIÓN DE NPCS AUTÓNOMOS Y JUGADORES ONLINE
-function spawnMapNPCs(center) {
-    npcs = [];
-    for (let i = 0; i < 5; i++) {
-        npcs.push({
-            id: `NPC_IA_${i+1}`,
-            lat: center.lat + (Math.random() - 0.5) * 0.005,
-            lng: center.lng + (Math.random() - 0.5) * 0.005,
-            vx: (Math.random() - 0.5) * 0.00005,
-            vy: (Math.random() - 0.5) * 0.00005
-        });
-    }
-}
-
-// 5. MINIJUEGO PATRÓN DE HACKEO
 function openHackMinigame(mission) {
-    currentActiveMission = mission;
-    userSequence = [];
-    generatedSequence = [];
-
+    userSequence = []; generatedSequence = [];
     for (let i = 0; i < 4; i++) generatedSequence.push(Math.floor(1 + Math.random() * 6));
 
     patternGrid.innerHTML = '';
     for (let i = 1; i <= 6; i++) {
         const btn = document.createElement('div');
-        btn.className = 'node-btn';
-        btn.innerText = i;
+        btn.className = 'node-btn'; btn.innerText = i;
         btn.onclick = () => handleNodeClick(i, btn);
         patternGrid.appendChild(btn);
     }
@@ -267,10 +511,7 @@ function playPatternPreview() {
             setTimeout(() => btns[nodeNum - 1].classList.remove('active'), 350);
         }
         step++;
-        if (step >= generatedSequence.length) {
-            clearInterval(interval);
-            hackStatusText.innerText = "¡INGRESÁ EL PATRÓN AHORA!";
-        }
+        if (step >= generatedSequence.length) clearInterval(interval);
     }, 600);
 }
 
@@ -283,54 +524,44 @@ function handleNodeClick(num, btnElement) {
     if (userSequence[idx] !== generatedSequence[idx]) {
         btnElement.classList.add('error');
         setTimeout(() => btnElement.classList.remove('error'), 300);
-        hackStatusText.innerText = "❌ SECUENCIA INCORRECTA";
         userSequence = [];
         setTimeout(playPatternPreview, 1000);
         return;
     }
 
     if (userSequence.length === generatedSequence.length) {
-        hackStatusText.innerText = "✔ ACCESO CONCEDIDO // LÓGICA ALTERADA";
-        if (currentActiveMission) currentActiveMission.done = true;
-
-        playerXP += 150;
-        territoryControlPct = Math.min(100, territoryControlPct + 10);
-        saveProfileData();
-        renderMissionsList();
+        playerXP += 150; territoryControlPct = Math.min(100, territoryControlPct + 10);
+        saveProfileData(); renderMissionsList();
         setTimeout(() => hackModal.style.display = 'none', 1200);
     }
 }
 
 closeModal.onclick = () => hackModal.style.display = 'none';
 
-// PERSISTENCIA
 function saveProfileData() {
-    const data = { xp: playerXP, pvp: pvpWins, pct: territoryControlPct };
-    localStorage.setItem('ctos_player_data', JSON.stringify(data));
-    updateProfileUI();
-}
-
-function loadProfileData() {
-    const saved = localStorage.getItem('ctos_player_data');
-    if (saved) {
-        const p = JSON.parse(saved);
-        playerXP = p.xp || 0; pvpWins = p.pvp || 0; territoryControlPct = p.pct || 35;
-    }
+    const data = {
+        username: myAgentId,
+        xp: playerXP,
+        stops: visitedStops,
+        pvp: pvpWins,
+        pct: territoryControlPct
+    };
+    localStorage.setItem(`ctos_user_${myAgentId}`, JSON.stringify(data));
     updateProfileUI();
 }
 
 function updateProfileUI() {
     xpVal.innerText = `${playerXP} PTS`;
+    stopsVal.innerText = visitedStops;
     pvpVal.innerText = pvpWins;
     territoryFill.style.width = `${territoryControlPct}%`;
     territoryPct.innerText = `${territoryControlPct}%`;
 }
 
-// 6. BUSCADOR ESPACIAL Y CONTROLES CON VELOCIDAD AJUSTADA (MARCHA LOW/SUAVE)
+// 6. NAVEGACIÓN Y CONTROLES
 async function flyToSpaceAndDive(targetLng, targetLat, locationName) {
     if (isFlying) return;
     isFlying = true;
-
     map.flyTo({ center: map.getCenter(), zoom: 1.8, pitch: 30, duration: 2200 });
 
     setTimeout(() => {
@@ -339,6 +570,7 @@ async function flyToSpaceAndDive(targetLng, targetLat, locationName) {
 
     setTimeout(() => {
         isFlying = false;
+        generatePokemonGoStops(map.getCenter());
         generateLocalMissions(map.getCenter());
         spawnMapNPCs(map.getCenter());
         statusText.innerText = `LLEGADA A: ${locationName}`;
@@ -355,32 +587,14 @@ btnSearch.onclick = async () => {
     } catch (e) {}
 };
 
-document.querySelectorAll('.city-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        flyToSpaceAndDive(parseFloat(e.target.dataset.lng), parseFloat(e.target.dataset.lat), e.target.innerText);
-    });
-});
-
 const keys = {};
-window.addEventListener('keydown', (e) => {
-    keys[e.key.toLowerCase()] = true;
-    if (e.key.toLowerCase() === 'e' && map) {
-        const center = map.getCenter();
-        const nearby = missions.find(m => !m.done && Math.abs(m.lat - center.lat) < 0.003 && Math.abs(m.lng - center.lng) < 0.003);
-        if (nearby) openHackMinigame(nearby);
-    }
-    if (e.key.toLowerCase() === 'c' && map) {
-        const cctvMission = missions.find(m => m.type === 'CCTV');
-        if (cctvMission) connectToCCTV(cctvMission);
-    }
-});
+window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 
-// MOVIMIENTO DE PERSONAJE MÁS "LOW" / SUAVE Y TÁCTICO
 function handleMapMovement() {
     if (!map || isFlying || isCctvMode) return;
     const center = map.getCenter();
-    const step = 0.00006; // Ajustado a marcha suave táctica
+    const step = 0.00006;
 
     let dLat = 0, dLng = 0;
     if (keys['w'] || keys['arrowup']) dLat += step;
@@ -391,17 +605,25 @@ function handleMapMovement() {
     if (dLat !== 0 || dLng !== 0) {
         map.panTo([center.lng + dLng, center.lat + dLat], { animate: false });
         currentHeadingAngle = Math.atan2(dLng, dLat) * (180 / Math.PI);
+        checkPoiProximity();
     }
 }
 
 // 7. BUCLE RENDERIZADO 60 FPS
 function renderLoop() {
-    canvas.width = 960; canvas.height = 640;
+    // Sincronizar dimensiones con la pantalla del dispositivo
+    const rect = canvas.getBoundingClientRect();
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     handleMapMovement();
     updateNPCs();
 
+    renderPokemonGoStopsCanvas();
     renderMissionNodesCanvas();
     renderNPCsOnMap();
 
@@ -432,6 +654,24 @@ function renderNPCsOnMap() {
     });
 }
 
+function renderPokemonGoStopsCanvas() {
+    if (!map || isFlying) return;
+    poiStops.forEach(stop => {
+        const pt = map.project([stop.lng, stop.lat]);
+        const cpt = map.project(map.getCenter());
+        const sx = canvas.width / 2 + (pt.x - cpt.x);
+        const sy = canvas.height / 2 + (pt.y - cpt.y);
+
+        const color = stop.claimed ? '#10b981' : '#00f0ff';
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 15;
+        ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Consolas';
+        ctx.fillText(`[${stop.title}]`, sx - 30, sy - 12);
+    });
+}
+
 function renderMissionNodesCanvas() {
     if (!map || isFlying) return;
     missions.forEach(m => {
@@ -450,26 +690,13 @@ function renderMissionNodesCanvas() {
 function renderGyroAvatar(x, y) {
     cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-    if (activeAvatarMode === 'webcam' && cameraActive && video.videoWidth > 0) {
-        if (userPersonBox) {
-            cropCtx.drawImage(video, userPersonBox.x, userPersonBox.y, userPersonBox.w, userPersonBox.h, 0, 0, cropCanvas.width, cropCanvas.height);
-        } else {
-            cropCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, cropCanvas.width, cropCanvas.height);
-        }
-    } else if (capturedPhotoDataUrl) {
-        const img = new Image(); img.src = capturedPhotoDataUrl;
+    if (customAvatarSpriteUrl) {
+        const img = new Image(); img.src = customAvatarSpriteUrl;
         cropCtx.drawImage(img, 0, 0, cropCanvas.width, cropCanvas.height);
-    } else if (activeAvatarMode === 'synth3d') {
-        cropCtx.fillStyle = '#0f172a'; cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-        cropCtx.fillStyle = '#00f0ff'; cropCtx.font = 'bold 12px Consolas'; cropCtx.fillText("CYBER 3D", 20, 70);
     } else {
-        cropCtx.fillStyle = '#020617'; cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-        cropCtx.fillStyle = '#ff0055'; cropCtx.font = 'bold 12px Consolas'; cropCtx.fillText("DEDSEC 2D", 18, 70);
+        cropCtx.fillStyle = '#0f172a'; cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+        cropCtx.fillStyle = '#00f0ff'; cropCtx.font = 'bold 10px Consolas'; cropCtx.fillText("AGENTE", 25, 60);
     }
-
-    // Máscara Hacker
-    cropCtx.fillStyle = '#ff0055'; cropCtx.fillRect(30, 30, 50, 20);
-    cropCtx.fillStyle = '#000'; cropCtx.font = 'bold 11px Consolas'; cropCtx.fillText("X X", 42, 44);
 
     ctx.save();
     ctx.translate(x, y);

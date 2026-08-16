@@ -2,11 +2,11 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>ctOS RED GLOBAL // DEDSEC OPERATING SYSTEM</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- MapLibre GL v4 -->
+    <!-- MapLibre GL v4 (Globo 3D) -->
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 
@@ -15,6 +15,31 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 </head>
 <body>
+
+<!-- OVERLAY DE LOGIN Y REGISTRO AL INICIAR -->
+<div id="auth-overlay" class="modal-overlay">
+    <div class="modal-card auth-card">
+        <div class="modal-header">
+            <h3 id="auth-title">SISTEMA DE ACCESO // DEDSEC NETWORK</h3>
+        </div>
+
+        <!-- FORMULARIO LOGIN / REGISTRO -->
+        <div id="auth-form-box">
+            <input type="text" id="auth-username" class="cyber-input" placeholder="Nombre de Agente / ID..." maxlength="15" required>
+            <input type="password" id="auth-password" class="cyber-input" placeholder="Contraseña de encriptación..." required>
+
+            <span class="panel-tag" style="margin-top:10px;">ELEGÍ TU AVATAR DE PERFIL (8 OPCIONES):</span>
+
+            <!-- GRILLA DE 8 AVATARES PRE-DISEÑADOS -->
+            <div id="avatar-presets-grid" class="preset-grid"></div>
+
+            <div class="auth-actions">
+                <button id="btn-login" class="poi-action-btn">🔑 INICIAR SESIÓN</button>
+                <button id="btn-register" class="action-btn-secondary">📝 REGISTRAR AGENTE</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div id="ctos-viewport">
     <video id="webcam" autoplay playsinline muted style="display:none;"></video>
@@ -46,7 +71,9 @@
 
         <!-- MODO AVATAR Y WEBCAM OPCIONAL -->
         <div class="avatar-controls">
-            <select id="avatar-mode-select" class="cyber-select">
+            <button id="btn-open-avatar-editor" class="cyber-btn-sm">🎭 CREAR / PROCESAR AVATAR</button>
+            <select id="avatar-mode-select" class="cyber-select" style="display:none;">
+                <option value="preset">👾 PRESET SELECCIONADO</option>
                 <option value="synth2d">🤖 AVATAR SINTÉTICO 2D</option>
                 <option value="synth3d">⚡ CYBER-SPRITE 3D</option>
                 <option value="webcam">📷 USAR WEBCAM EN VIVO</option>
@@ -68,9 +95,10 @@
         <button id="btn-run-scraper" class="action-btn">🕷️ EJECUTAR SCRAPER DE DATOS</button>
         <button id="btn-hack-db" class="action-btn">💾 INFILTRAR BASE DE DATOS</button>
 
-        <span class="panel-tag" style="margin-top:8px;">👤 PERFIL Y DUELOS</span>
+        <span class="panel-tag" style="margin-top:8px;">👤 PERFIL Y PARADAS</span>
         <div class="profile-stats">
             <div>EXP: <strong id="xp-val">0 PTS</strong></div>
+            <div>PARADAS VISITADAS: <strong id="stops-val">0</strong></div>
             <div>DUELOS 1v1 GANADOS: <strong id="pvp-val">0</strong></div>
         </div>
     </div>
@@ -79,6 +107,59 @@
     <div class="ctos-panel-right">
         <span class="panel-tag">⚡ MISIONES Y CLUBES DE ZONA</span>
         <div id="missions-list" class="missions-container"></div>
+    </div>
+
+    <!-- LAYOUT FLOTANTE ESTILO POKÉMON GO -->
+    <div id="poi-popup-card" class="poi-card-up" style="display: none;">
+        <div class="poi-header">
+            <span id="poi-type-badge" class="poi-badge">📍 PARADA DE CONOCIMIENTO</span>
+            <span id="close-poi" class="close-btn">✖</span>
+        </div>
+        <h3 id="poi-title">CENTRO DE DATOS Y CONOCIMIENTO #01</h3>
+        <p id="poi-desc" class="poi-desc">Parada de información interceptada. Extraé conocimiento cibernético e ítems de red.</p>
+
+        <div class="poi-loot-box">
+            <div class="loot-item">💡 +100 PTS CONOCIMIENTO</div>
+            <div class="loot-item">🔑 ITEM: CHIP ENCRIPTADO</div>
+        </div>
+
+        <button id="btn-claim-poi" class="poi-action-btn">⚡ HACKEAR Y EXTRAER DATOS</button>
+    </div>
+
+    <!-- MODAL DE PROCESADO Y CREADOR DE AVATAR -->
+    <div id="avatar-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card modal-large">
+            <div class="modal-header">
+                <h3>ESTUDIO DE AVATAR Y ESTILIZADO DEDSEC</h3>
+                <span id="close-avatar-modal" class="close-btn">✖</span>
+            </div>
+            <div class="avatar-editor-grid">
+                <div class="editor-preview-box">
+                    <canvas id="avatarPreviewCanvas" width="160" height="200"></canvas>
+                </div>
+                <div class="editor-controls-box">
+                    <span class="panel-tag">1. FUENTE DEL PERFIL</span>
+                    <select id="editor-source-select" class="cyber-select-full">
+                        <option value="synth2d">🤖 SINTÉTICO 2D PIXEL</option>
+                        <option value="synth3d">⚡ CYBER-SPRITE 3D</option>
+                        <option value="webcam">📷 TOMAR FOTO WEBCAM</option>
+                    </select>
+
+                    <div id="webcam-snap-group" style="display:none; margin-top: 8px;">
+                        <button id="btn-snap-photo" class="action-btn-full">📸 CAPTURAR Y CONVERTIR FOTO</button>
+                    </div>
+
+                    <span class="panel-tag" style="margin-top:12px;">2. ESTILO DE PROCESADO</span>
+                    <select id="editor-style-select" class="cyber-select-full">
+                        <option value="cyberpunk">🔴 NEÓN CYBERPUNK (X_X)</option>
+                        <option value="matrix">🟢 MATRIZ HOLOGRÁFICA</option>
+                        <option value="pixel">👾 PIXEL-ART VINTAGE</option>
+                    </select>
+
+                    <button id="btn-save-custom-avatar" class="poi-action-btn" style="margin-top:15px;">💾 APLICAR AVATAR AL PERFIL</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL DE PATRÓN Y MODIFICACIÓN DE SOFTWARE -->
