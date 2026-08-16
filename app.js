@@ -2,59 +2,113 @@ const video = document.getElementById('webcam');
 const canvas = document.getElementById('stageCanvas');
 const ctx = canvas.getContext('2d');
 
-const btnRequestCam = document.getElementById('btn-request-cam');
+const avatarModeSelect = document.getElementById('avatar-mode-select');
 const cameraSelect = document.getElementById('camera-select');
+const btnTakePhoto = document.getElementById('btn-take-photo');
 const statusText = document.getElementById('status-text');
-const onlineCounter = document.getElementById('online-counter');
+const searchInput = document.getElementById('search-input');
+const btnSearch = document.getElementById('btn-search');
 
-const chatInput = document.getElementById('chat-input');
-const chatLogs = document.getElementById('chat-logs');
+const xpVal = document.getElementById('xp-val');
+const pvpVal = document.getElementById('pvp-val');
+const missionsList = document.getElementById('missions-list');
+const territoryFill = document.getElementById('territory-fill');
+const territoryPct = document.getElementById('territory-pct');
+
+const cctvOverlay = document.getElementById('cctv-overlay');
+const cctvIdSpan = document.getElementById('cctv-id');
+const btnExitCctv = document.getElementById('btn-exit-cctv');
+
+const hackModal = document.getElementById('hack-modal');
+const closeModal = document.getElementById('close-modal');
+const patternGrid = document.getElementById('pattern-grid');
+const hackStatusText = document.getElementById('hack-status-text');
 
 let currentStream = null;
 let aiModel = null;
 let cameraActive = false;
-
-let activeCity = 'buenosaires';
-let activeOutfit = 'dedsec';
-
-let myAgentId = `AGENTE_${Math.floor(1000 + Math.random() * 9000)}`;
-let currentMessage = "";
-let currentMessageTimer = null;
-
-let trafficLightRed = false;
-let blackoutActive = false;
-
-const myPlayer = { x: 480, y: 440, speed: 4.5, w: 80, h: 110 };
 let userPersonBox = null;
 
-let persistentAvatars = [];
+let myAgentId = `AGENTE_${Math.floor(1000 + Math.random() * 9000)}`;
+let playerXP = 0;
+let pvpWins = 0;
+let territoryControlPct = 35;
+
+// MODO AVATAR (NO OBLIGATORIO WEBCAM)
+let activeAvatarMode = 'synth2d';
+let capturedPhotoDataUrl = null;
+
+// MOTOR 3D Y CÁMARA REMOTA CCTV
+let map = null;
+let isFlying = false;
+let isCctvMode = false;
+let currentHeadingAngle = 0;
+
+// MISIONES, NPCS Y DUELOS 1V1
+let missions = [];
+let npcs = []; // NPCs offline con IA
+let onlinePlayers = []; // Jugadores cruzados
+let currentActiveMission = null;
+let generatedSequence = [];
+let userSequence = [];
 
 const cropCanvas = document.createElement('canvas');
-cropCanvas.width = 100; cropCanvas.height = 130;
+cropCanvas.width = 110; cropCanvas.height = 140;
 const cropCtx = cropCanvas.getContext('2d');
 
-// 1. INICIALIZAR SISTEMA
-async function initSystem() {
-    statusText.innerText = "SISTEMA ONLINE. HACÉ CLIC EN 'ACTIVAR CÁMARA' O JUGÁ DIRECTO";
-    loadPersistentAvatars();
+// 1. INICIALIZAR MOTOR Y MAPA GLOBO 3D
+function initSystem() {
+    loadProfileData();
 
-    // Iniciar bucle gráfico inmediatamente sin esperar cámara
-    requestAnimationFrame(metaverseLoop);
+    map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        center: [-64.1833, -31.4167],
+        zoom: 15,
+        pitch: 60,
+        bearing: 0,
+        antialias: true
+    });
 
-    // Cargar IA en segundo plano
-    try {
-        aiModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-        statusText.innerText = "MODELO IA LISTO // ACTIVÁ TU CÁMARA CUANDO QUIERAS";
-    } catch (e) {
-        statusText.innerText = "MODO AVATAR ACTIVO (SIN IA)";
-    }
+    map.on('style.load', () => {
+        map.setProjection({ name: 'globe' });
+        generateLocalMissions(map.getCenter());
+        spawnMapNPCs(map.getCenter());
+    });
+
+    requestAnimationFrame(renderLoop);
+    initAIAsync();
 }
 
-// SOLICITUD EXPLÍCITA DE CÁMARA (RESUELVE EL BLOQUEO DE NAVEGADOR)
-btnRequestCam.addEventListener('click', async () => {
-    btnRequestCam.innerText = "CARGANDO...";
-    await setupCameras();
+// 2. SISTEMA DE AVATAR Y WEBCAM OPCIONAL
+avatarModeSelect.addEventListener('change', (e) => {
+    activeAvatarMode = e.target.value;
+    if (activeAvatarMode === 'webcam') {
+        cameraSelect.style.display = 'inline-block';
+        btnTakePhoto.style.display = 'inline-block';
+        setupCameras();
+    } else {
+        cameraSelect.style.display = 'none';
+        btnTakePhoto.style.display = 'none';
+        stopCamera();
+    }
 });
+
+btnTakePhoto.addEventListener('click', () => {
+    if (cameraActive && video.videoWidth > 0) {
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = 110; snapCanvas.height = 140;
+        const snapCtx = snapCanvas.getContext('2d');
+        snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+        capturedPhotoDataUrl = snapCanvas.toDataURL();
+        statusText.innerText = "¡FOTO DE PERFIL CAPTURADA Y RENDERIZADA!";
+    }
+});
+
+function stopCamera() {
+    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+    cameraActive = false;
+}
 
 async function setupCameras() {
     try {
@@ -72,280 +126,369 @@ async function setupCameras() {
             cameraSelect.appendChild(opt);
         });
 
-        if (videoDevices.length > 0) {
-            btnRequestCam.style.display = 'none';
-            cameraSelect.style.display = 'inline-block';
-            startCamera(videoDevices[0].deviceId);
-        }
-    } catch (e) {
-        statusText.innerText = "ERROR DE PERMISO DE CÁMARA. JUGANDO EN MODO AVATAR";
-        btnRequestCam.innerText = "REINTENTAR CÁMARA";
-    }
+        if (videoDevices.length > 0) startCamera(videoDevices[0].deviceId);
+    } catch (e) {}
 }
 
 async function startCamera(deviceId) {
-    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+    stopCamera();
     try {
         currentStream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: 1280, height: 720 }
+            video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         video.srcObject = currentStream;
+        await video.play();
         cameraActive = true;
-        statusText.innerText = "CÁMARA CONECTADA Y TRANSMITIENDO EN VIVO";
-    } catch (e) {
-        statusText.innerText = "ERROR AL CONECTAR CÁMARA";
-    }
+    } catch (e) {}
 }
 
 cameraSelect.addEventListener('change', (e) => startCamera(e.target.value));
 
-// SELECCIONADORES DE VESTIMENTA Y CIUDADES
-document.querySelectorAll('.city-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.city-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        activeCity = e.target.dataset.city;
-        statusText.innerText = `METAVERSE: TELETRANSPORTE A ${activeCity.toUpperCase()}`;
+function initAIAsync() {
+    cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(model => {
+        aiModel = model;
+        setInterval(async () => {
+            if (activeAvatarMode === 'webcam' && cameraActive && video.videoWidth > 0 && !video.paused) {
+                try {
+                    const predictions = await aiModel.detect(video, 2, 0.35);
+                    const person = predictions.find(p => p.class === 'person');
+                    if (person) userPersonBox = { x: person.bbox[0], y: person.bbox[1], w: person.bbox[2], h: person.bbox[3] };
+                } catch (e) {}
+            }
+        }, 150);
     });
-});
+}
 
-document.querySelectorAll('.outfit-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.outfit-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        activeOutfit = e.target.dataset.outfit;
-    });
-});
+// 3. MISIONES, EMPRESAS, CLUBES Y CÁMARAS CCTV REMOTAS
+function generateLocalMissions(center) {
+    missions = [
+        { id: 1, type: 'ANTENA', title: "ANTENA ctOS", desc: "Desbloquear calles del distrito", lat: center.lat + 0.0015, lng: center.lng + 0.002, done: false },
+        { id: 2, type: 'EMPRESA', title: "CORPORACIÓN DATASEC", desc: "Hackear base de datos", lat: center.lat - 0.0012, lng: center.lng - 0.0018, done: false },
+        { id: 3, type: 'CCTV', title: "CÁMARA DE VIGILANCIA", desc: "Espiar sin ir presencialmente", lat: center.lat + 0.002, lng: center.lng - 0.001, done: false },
+        { id: 4, type: 'CLUB', title: "CLUB HACKER UNDER", desc: "Duelo 1v1 y dominación", lat: center.lat - 0.0018, lng: center.lng + 0.0015, done: false }
+    ];
+    renderMissionsList();
+}
 
-// REGISTRO PERSISTENTE
-document.getElementById('btn-save-avatar').onclick = () => {
-    if (cropCanvas) {
-        const dataUrl = cropCanvas.toDataURL();
-        const newAvatar = {
-            id: myAgentId,
-            sprite: dataUrl,
-            x: 100 + Math.random() * 700,
-            y: 380 + Math.random() * 180,
-            outfit: activeOutfit,
-            city: activeCity,
-            vx: (Math.random() - 0.5) * 1.5
+function renderMissionsList() {
+    missionsList.innerHTML = '';
+    missions.forEach(m => {
+        const div = document.createElement('div');
+        div.className = `mission-card ${m.done ? 'done' : ''}`;
+        div.innerHTML = `
+            <div class="mission-title">${m.done ? '✔' : '⚡'} ${m.title}</div>
+            <div class="mission-desc">${m.desc}</div>
+        `;
+        div.onclick = () => {
+            if (m.type === 'CCTV') {
+                connectToCCTV(m);
+            } else {
+                map.panTo([m.lng, m.lat]);
+                if (!m.done) openHackMinigame(m);
+            }
         };
+        missionsList.appendChild(div);
+    });
+}
 
-        persistentAvatars.push(newAvatar);
-        localStorage.setItem('ctos_metaverse_db', JSON.stringify(persistentAvatars));
+// RECONOCIMIENTO REMOTO POR CÁMARA CCTV
+function connectToCCTV(mission) {
+    isCctvMode = true;
+    cctvIdSpan.innerText = mission.id;
+    cctvOverlay.style.display = 'block';
+    map.flyTo({ center: [mission.lng, mission.lat], zoom: 18, pitch: 75 });
+    statusText.innerText = `CÁMARA EN VIVO HACKEADA // ANALIZANDO TAREAS REMOTAS`;
+}
 
-        statusText.innerText = "¡AVATAR GUARDADO EN LA CIUDAD!";
-        addChatMessage("SISTEMA", `${myAgentId} se registró en la ciudad.`);
-        updateOnlineCounter();
-    }
+btnExitCctv.onclick = () => {
+    isCctvMode = false;
+    cctvOverlay.style.display = 'none';
+    statusText.innerText = "DESCONECTADO DE CCTV // REGRESANDO A MARCHA";
 };
 
-document.getElementById('btn-clear-db').onclick = () => {
-    persistentAvatars = [];
-    localStorage.removeItem('ctos_metaverse_db');
-    statusText.innerText = "CIUDAD LIMPIADA";
-    updateOnlineCounter();
+// HERRAMIENTAS SCRAPER Y BD
+document.getElementById('btn-run-scraper').onclick = () => {
+    statusText.innerText = "🕷️ SCRAPER ACTIVO: EXTRACCIÓN DE NODOS Y FINANZAS URBANAS...";
+    setTimeout(() => {
+        playerXP += 80;
+        territoryControlPct = Math.min(100, territoryControlPct + 5);
+        saveProfileData();
+        statusText.innerText = "✔ DATOS EXTRAÍDOS // EXP +80 // DOMINIO AUMENTADO";
+    }, 1500);
 };
 
-function loadPersistentAvatars() {
-    const db = localStorage.getItem('ctos_metaverse_db');
-    if (db) {
-        persistentAvatars = JSON.parse(db);
-        persistentAvatars.forEach(av => {
-            const img = new Image();
-            img.src = av.sprite;
-            av.imgElement = img;
+document.getElementById('btn-hack-db').onclick = () => {
+    openHackMinigame({ id: 99, title: "BASE DE DATOS REGIONAL", desc: "Infiltrar software central" });
+};
+
+// 4. GENERACIÓN DE NPCS AUTÓNOMOS Y JUGADORES ONLINE
+function spawnMapNPCs(center) {
+    npcs = [];
+    for (let i = 0; i < 5; i++) {
+        npcs.push({
+            id: `NPC_IA_${i+1}`,
+            lat: center.lat + (Math.random() - 0.5) * 0.005,
+            lng: center.lng + (Math.random() - 0.5) * 0.005,
+            vx: (Math.random() - 0.5) * 0.00005,
+            vy: (Math.random() - 0.5) * 0.00005
         });
     }
-    updateOnlineCounter();
 }
 
-function updateOnlineCounter() {
-    onlineCounter.innerText = `${persistentAvatars.length + 1} AGENTES EN CIUDAD`;
-}
+// 5. MINIJUEGO PATRÓN DE HACKEO
+function openHackMinigame(mission) {
+    currentActiveMission = mission;
+    userSequence = [];
+    generatedSequence = [];
 
-// CHAT EN VIVO
-document.getElementById('btn-send-chat').onclick = sendChat;
-chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
+    for (let i = 0; i < 4; i++) generatedSequence.push(Math.floor(1 + Math.random() * 6));
 
-function sendChat() {
-    const txt = chatInput.value.trim();
-    if (txt) {
-        currentMessage = txt;
-        addChatMessage(myAgentId, txt);
-        chatInput.value = '';
-
-        if (currentMessageTimer) clearTimeout(currentMessageTimer);
-        currentMessageTimer = setTimeout(() => currentMessage = "", 5000);
-    }
-}
-
-function addChatMessage(sender, text) {
-    const div = document.createElement('div');
-    div.className = 'chat-msg';
-    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
-    chatLogs.appendChild(div);
-    chatLogs.scrollTop = chatLogs.scrollHeight;
-}
-
-// ACCIONES DE HACKEO
-document.getElementById('btn-hack-lights').onclick = () => {
-    trafficLightRed = !trafficLightRed;
-    addChatMessage("HACK", trafficLightRed ? "Semáforos en ROJO" : "Semáforos restaurados");
-};
-
-document.getElementById('btn-hack-blackout').onclick = () => {
-    blackoutActive = !blackoutActive;
-    addChatMessage("HACK", blackoutActive ? "APAGÓN DISPARADO" : "Energía restaurada");
-};
-
-// CONTROLES TECLADO
-const keys = {};
-window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
-
-// 3. BUCLE PRINCIPAL DEL METAVERSO (SIEMPRE ACTIVO)
-async function metaverseLoop() {
-    canvas.width = 960; canvas.height = 640;
-
-    // DETECTAR PERSONA SI LA CÁMARA ESTÁ ACTIVA Y HAY MODELO
-    if (cameraActive && aiModel && video.readyState === 4) {
-        try {
-            const predictions = await aiModel.detect(video, 2, 0.45);
-            const person = predictions.find(p => p.class === 'person');
-            if (person) {
-                userPersonBox = { x: person.bbox[0], y: person.bbox[1], w: person.bbox[2], h: person.bbox[3] };
-            }
-        } catch (e) {}
+    patternGrid.innerHTML = '';
+    for (let i = 1; i <= 6; i++) {
+        const btn = document.createElement('div');
+        btn.className = 'node-btn';
+        btn.innerText = i;
+        btn.onclick = () => handleNodeClick(i, btn);
+        patternGrid.appendChild(btn);
     }
 
-    // A. ESCENARIO
-    drawCityBackground(activeCity);
-
-    // B. AVATARES PERSISTENTES DE OTROS
-    renderPersistentAvatars();
-
-    // C. MOVIMIENTO DEL JUGADOR
-    if (keys['w'] || keys['arrowup']) myPlayer.y -= myPlayer.speed;
-    if (keys['s'] || keys['arrowdown']) myPlayer.y += myPlayer.speed;
-    if (keys['a'] || keys['arrowleft']) myPlayer.x -= myPlayer.speed;
-    if (keys['d'] || keys['arrowright']) myPlayer.x += myPlayer.speed;
-
-    myPlayer.x = Math.max(40, Math.min(canvas.width - 120, myPlayer.x));
-    myPlayer.y = Math.max(360, Math.min(canvas.height - 130, myPlayer.y));
-
-    // D. DIBUJAR MI AVATAR
-    renderLivePlayer(myPlayer.x, myPlayer.y);
-
-    requestAnimationFrame(metaverseLoop);
+    hackStatusText.innerText = "MEMORIZÁ EL PATRÓN DE INTRUSIÓN...";
+    hackModal.style.display = 'flex';
+    playPatternPreview();
 }
 
-function renderPersistentAvatars() {
-    persistentAvatars.forEach(av => {
-        if (av.city === activeCity) {
-            av.x += av.vx;
-            if (av.x < 50 || av.x > canvas.width - 120) av.vx *= -1;
-
-            if (av.imgElement) {
-                ctx.shadowColor = '#facc15'; ctx.shadowBlur = 10;
-                ctx.drawImage(av.imgElement, av.x, av.y, 70, 95);
-
-                ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5;
-                ctx.strokeRect(av.x, av.y, 70, 95);
-                ctx.shadowBlur = 0;
-
-                ctx.fillStyle = '#facc15'; ctx.font = 'bold 9px Consolas';
-                ctx.fillText(av.id, av.x, av.y - 6);
-            }
+function playPatternPreview() {
+    let step = 0;
+    const interval = setInterval(() => {
+        const nodeNum = generatedSequence[step];
+        const btns = patternGrid.children;
+        if (btns[nodeNum - 1]) {
+            btns[nodeNum - 1].classList.add('active');
+            setTimeout(() => btns[nodeNum - 1].classList.remove('active'), 350);
         }
-    });
-}
-
-function renderLivePlayer(x, y) {
-    cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-
-    if (cameraActive && video.readyState === 4) {
-        if (userPersonBox) {
-            cropCtx.drawImage(
-                video,
-                userPersonBox.x, userPersonBox.y, userPersonBox.w, userPersonBox.h,
-                0, 0, cropCanvas.width, cropCanvas.height
-            );
-        } else {
-            cropCtx.drawImage(video, video.videoWidth * 0.3, video.videoHeight * 0.1, 300, 400, 0, 0, cropCanvas.width, cropCanvas.height);
+        step++;
+        if (step >= generatedSequence.length) {
+            clearInterval(interval);
+            hackStatusText.innerText = "¡INGRESÁ EL PATRÓN AHORA!";
         }
-    } else {
-        // MODO SINTÉTICO SI NO HAY CÁMARA
-        cropCtx.fillStyle = '#0f172a';
-        cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-        cropCtx.fillStyle = '#00f0ff';
-        cropCtx.font = 'bold 12px Consolas';
-        cropCtx.fillText("AGENTE", 22, 60);
-    }
-
-    // MÁSCARA DEDSEC
-    if (activeOutfit === 'dedsec') {
-        cropCtx.fillStyle = '#ff0055'; cropCtx.fillRect(30, 30, 40, 20);
-        cropCtx.fillStyle = '#000'; cropCtx.fillText("X X", 40, 44);
-    } else if (activeOutfit === 'visor') {
-        cropCtx.fillStyle = '#00f0ff'; cropCtx.fillRect(20, 25, 60, 14);
-    }
-
-    // AVATAR CON RETÍCULA NEÓN
-    ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 18;
-    ctx.drawImage(cropCanvas, x, y, myPlayer.w, myPlayer.h);
-
-    ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, myPlayer.w, myPlayer.h);
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 10px Consolas';
-    ctx.fillText(`TÚ [${myAgentId}]`, x - 5, y - 8);
-
-    if (currentMessage) {
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.9)';
-        ctx.fillRect(x - 20, y - 35, 120, 20);
-        ctx.fillStyle = '#000'; ctx.font = 'bold 9px Consolas';
-        ctx.fillText(currentMessage, x - 15, y - 22);
-    }
+    }, 600);
 }
 
-function drawCityBackground(city) {
-    if (blackoutActive) {
-        ctx.fillStyle = '#020306'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+function handleNodeClick(num, btnElement) {
+    userSequence.push(num);
+    btnElement.classList.add('active');
+    setTimeout(() => btnElement.classList.remove('active'), 200);
+
+    const idx = userSequence.length - 1;
+    if (userSequence[idx] !== generatedSequence[idx]) {
+        btnElement.classList.add('error');
+        setTimeout(() => btnElement.classList.remove('error'), 300);
+        hackStatusText.innerText = "❌ SECUENCIA INCORRECTA";
+        userSequence = [];
+        setTimeout(playPatternPreview, 1000);
         return;
     }
 
-    if (city === 'buenosaires') {
-        ctx.fillStyle = '#0a1026'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#1e293b'; ctx.beginPath();
-        ctx.moveTo(480, 80); ctx.lineTo(510, 380); ctx.lineTo(450, 380); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2; ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 15; ctx.stroke(); ctx.shadowBlur = 0;
-        ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(480, 160, 35, 0, Math.PI * 2); ctx.fill();
-    } else if (city === 'tokyo') {
-        ctx.fillStyle = '#120524'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let i = 0; i < 8; i++) {
-            ctx.fillStyle = '#1e0a38'; ctx.fillRect(i * 125, 100 + (i % 3) * 30, 110, 380);
-            ctx.strokeStyle = '#a855f7'; ctx.strokeRect(i * 125, 100 + (i % 3) * 30, 110, 380);
-        }
-    } else {
-        ctx.fillStyle = '#040d1a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let i = 0; i < 6; i++) {
-            ctx.fillStyle = '#0f172a'; ctx.fillRect(60 + i * 150, 60, 110, 420);
-            ctx.strokeStyle = '#00f0ff'; ctx.strokeRect(60 + i * 150, 60, 110, 420);
-        }
+    if (userSequence.length === generatedSequence.length) {
+        hackStatusText.innerText = "✔ ACCESO CONCEDIDO // LÓGICA ALTERADA";
+        if (currentActiveMission) currentActiveMission.done = true;
+
+        playerXP += 150;
+        territoryControlPct = Math.min(100, territoryControlPct + 10);
+        saveProfileData();
+        renderMissionsList();
+        setTimeout(() => hackModal.style.display = 'none', 1200);
+    }
+}
+
+closeModal.onclick = () => hackModal.style.display = 'none';
+
+// PERSISTENCIA
+function saveProfileData() {
+    const data = { xp: playerXP, pvp: pvpWins, pct: territoryControlPct };
+    localStorage.setItem('ctos_player_data', JSON.stringify(data));
+    updateProfileUI();
+}
+
+function loadProfileData() {
+    const saved = localStorage.getItem('ctos_player_data');
+    if (saved) {
+        const p = JSON.parse(saved);
+        playerXP = p.xp || 0; pvpWins = p.pvp || 0; territoryControlPct = p.pct || 35;
+    }
+    updateProfileUI();
+}
+
+function updateProfileUI() {
+    xpVal.innerText = `${playerXP} PTS`;
+    pvpVal.innerText = pvpWins;
+    territoryFill.style.width = `${territoryControlPct}%`;
+    territoryPct.innerText = `${territoryControlPct}%`;
+}
+
+// 6. BUSCADOR ESPACIAL Y CONTROLES CON VELOCIDAD AJUSTADA (MARCHA LOW/SUAVE)
+async function flyToSpaceAndDive(targetLng, targetLat, locationName) {
+    if (isFlying) return;
+    isFlying = true;
+
+    map.flyTo({ center: map.getCenter(), zoom: 1.8, pitch: 30, duration: 2200 });
+
+    setTimeout(() => {
+        map.flyTo({ center: [targetLng, targetLat], zoom: 16, pitch: 60, duration: 3200 });
+    }, 2300);
+
+    setTimeout(() => {
+        isFlying = false;
+        generateLocalMissions(map.getCenter());
+        spawnMapNPCs(map.getCenter());
+        statusText.innerText = `LLEGADA A: ${locationName}`;
+    }, 5600);
+}
+
+btnSearch.onclick = async () => {
+    const q = searchInput.value.trim();
+    if (!q) return;
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
+        const d = await res.json();
+        if (d.length > 0) flyToSpaceAndDive(parseFloat(d[0].lon), parseFloat(d[0].lat), d[0].display_name.split(',')[0].toUpperCase());
+    } catch (e) {}
+};
+
+document.querySelectorAll('.city-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        flyToSpaceAndDive(parseFloat(e.target.dataset.lng), parseFloat(e.target.dataset.lat), e.target.innerText);
+    });
+});
+
+const keys = {};
+window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'e' && map) {
+        const center = map.getCenter();
+        const nearby = missions.find(m => !m.done && Math.abs(m.lat - center.lat) < 0.003 && Math.abs(m.lng - center.lng) < 0.003);
+        if (nearby) openHackMinigame(nearby);
+    }
+    if (e.key.toLowerCase() === 'c' && map) {
+        const cctvMission = missions.find(m => m.type === 'CCTV');
+        if (cctvMission) connectToCCTV(cctvMission);
+    }
+});
+window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+// MOVIMIENTO DE PERSONAJE MÁS "LOW" / SUAVE Y TÁCTICO
+function handleMapMovement() {
+    if (!map || isFlying || isCctvMode) return;
+    const center = map.getCenter();
+    const step = 0.00006; // Ajustado a marcha suave táctica
+
+    let dLat = 0, dLng = 0;
+    if (keys['w'] || keys['arrowup']) dLat += step;
+    if (keys['s'] || keys['arrowdown']) dLat -= step;
+    if (keys['a'] || keys['arrowleft']) dLng -= step;
+    if (keys['d'] || keys['arrowright']) dLng += step;
+
+    if (dLat !== 0 || dLng !== 0) {
+        map.panTo([center.lng + dLng, center.lat + dLat], { animate: false });
+        currentHeadingAngle = Math.atan2(dLng, dLat) * (180 / Math.PI);
+    }
+}
+
+// 7. BUCLE RENDERIZADO 60 FPS
+function renderLoop() {
+    canvas.width = 960; canvas.height = 640;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    handleMapMovement();
+    updateNPCs();
+
+    renderMissionNodesCanvas();
+    renderNPCsOnMap();
+
+    if (!isCctvMode) {
+        renderGyroAvatar(canvas.width / 2, canvas.height / 2);
     }
 
-    // CALLE
-    ctx.fillStyle = '#090d16'; ctx.fillRect(0, 380, canvas.width, 260);
-    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(0, 380); ctx.lineTo(canvas.width, 380); ctx.stroke();
+    requestAnimationFrame(renderLoop);
+}
 
-    // SEMÁFORO
-    ctx.fillStyle = '#0f172a'; ctx.fillRect(860, 260, 26, 70);
-    ctx.strokeStyle = '#38bdf8'; ctx.strokeRect(860, 260, 26, 70);
-    ctx.fillStyle = trafficLightRed ? '#ff0055' : '#10b981';
-    ctx.beginPath(); ctx.arc(873, 275 + (trafficLightRed ? 0 : 25), 8, 0, Math.PI * 2); ctx.fill();
+function updateNPCs() {
+    npcs.forEach(npc => {
+        npc.lat += npc.vx;
+        npc.lng += npc.vy;
+    });
+}
+
+function renderNPCsOnMap() {
+    if (!map || isFlying) return;
+    npcs.forEach(npc => {
+        const pt = map.project([npc.lng, npc.lat]);
+        const cpt = map.project(map.getCenter());
+        const sx = canvas.width / 2 + (pt.x - cpt.x);
+        const sy = canvas.height / 2 + (pt.y - cpt.y);
+
+        ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#facc15'; ctx.font = '8px Consolas'; ctx.fillText(npc.id, sx - 15, sy - 8);
+    });
+}
+
+function renderMissionNodesCanvas() {
+    if (!map || isFlying) return;
+    missions.forEach(m => {
+        const pt = map.project([m.lng, m.lat]);
+        const cpt = map.project(map.getCenter());
+        const sx = canvas.width / 2 + (pt.x - cpt.x);
+        const sy = canvas.height / 2 + (pt.y - cpt.y);
+
+        const color = m.done ? '#10b981' : '#ff0055';
+        ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 10;
+        ctx.fillRect(sx - 7, sy - 7, 14, 14); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Consolas'; ctx.fillText(`[${m.title}]`, sx - 20, sy - 10);
+    });
+}
+
+function renderGyroAvatar(x, y) {
+    cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+
+    if (activeAvatarMode === 'webcam' && cameraActive && video.videoWidth > 0) {
+        if (userPersonBox) {
+            cropCtx.drawImage(video, userPersonBox.x, userPersonBox.y, userPersonBox.w, userPersonBox.h, 0, 0, cropCanvas.width, cropCanvas.height);
+        } else {
+            cropCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, cropCanvas.width, cropCanvas.height);
+        }
+    } else if (capturedPhotoDataUrl) {
+        const img = new Image(); img.src = capturedPhotoDataUrl;
+        cropCtx.drawImage(img, 0, 0, cropCanvas.width, cropCanvas.height);
+    } else if (activeAvatarMode === 'synth3d') {
+        cropCtx.fillStyle = '#0f172a'; cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+        cropCtx.fillStyle = '#00f0ff'; cropCtx.font = 'bold 12px Consolas'; cropCtx.fillText("CYBER 3D", 20, 70);
+    } else {
+        cropCtx.fillStyle = '#020617'; cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+        cropCtx.fillStyle = '#ff0055'; cropCtx.font = 'bold 12px Consolas'; cropCtx.fillText("DEDSEC 2D", 18, 70);
+    }
+
+    // Máscara Hacker
+    cropCtx.fillStyle = '#ff0055'; cropCtx.fillRect(30, 30, 50, 20);
+    cropCtx.fillStyle = '#000'; cropCtx.font = 'bold 11px Consolas'; cropCtx.fillText("X X", 42, 44);
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 1.5; ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.rotate((currentHeadingAngle * Math.PI) / 180);
+    ctx.fillStyle = '#ff0055';
+    ctx.beginPath(); ctx.moveTo(0, -75); ctx.lineTo(10, -58); ctx.lineTo(-10, -58); ctx.closePath(); ctx.fill();
+
+    ctx.drawImage(cropCanvas, -40, -50, 80, 100);
+    ctx.strokeStyle = '#00f0ff'; ctx.strokeRect(-40, -50, 80, 100);
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 10px Consolas';
+    ctx.fillText(`AGENTE [${myAgentId}]`, x - 50, y + 70);
 }
 
 initSystem();

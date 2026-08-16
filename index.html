@@ -3,8 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ctOS METAVERSE // FIX CAM</title>
+    <title>ctOS RED GLOBAL // DEDSEC OPERATING SYSTEM</title>
     <link rel="stylesheet" href="style.css">
+
+    <!-- MapLibre GL v4 -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
     <!-- TensorFlow.js y COCO-SSD -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -13,59 +18,89 @@
 
 <div id="ctos-viewport">
     <video id="webcam" autoplay playsinline muted style="display:none;"></video>
+
+    <!-- MAPA 3D VECTORIAL -->
+    <div id="map"></div>
+
+    <!-- CAPA DE DIBUJO Y EFECTOS CIBERNÉTICOS -->
     <canvas id="stageCanvas" width="960" height="640"></canvas>
 
     <div class="scanlines"></div>
 
-    <!-- HUD SUPERIOR MULTIJUGADOR -->
+    <!-- OVERLAY DE CÁMARA CCTV REMOTA -->
+    <div id="cctv-overlay" class="cctv-frame" style="display: none;">
+        <div class="cctv-header">REC ● FEED EN VIVO // CAM_URBANA_<span id="cctv-id">001</span></div>
+        <button id="btn-exit-cctv" class="cctv-exit-btn">DESCONECTAR CAM</button>
+    </div>
+
+    <!-- HUD SUPERIOR -->
     <div class="ctos-header">
         <div class="badge">
-            <span class="live-pulse">●</span> METAVERSE DEDSEC NET // <strong id="online-counter">1 AGENTE EN LÍNEA</strong>
+            <span class="live-pulse">●</span> ctOS DOMINION // <strong id="barrio-name">DISTRITO CENTRAL</strong>
         </div>
 
-        <!-- CONTROLES Y REFRESCADO DE CÁMARA -->
-        <div class="camera-box">
-            <button id="btn-request-cam" class="cyber-btn-cam">📷 ACTIVAR CÁMARA</button>
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="🔍 Buscar ciudad, empresa o zona..." />
+            <button id="btn-search">DESPEGAR</button>
+        </div>
+
+        <!-- MODO AVATAR Y WEBCAM OPCIONAL -->
+        <div class="avatar-controls">
+            <select id="avatar-mode-select" class="cyber-select">
+                <option value="synth2d">🤖 AVATAR SINTÉTICO 2D</option>
+                <option value="synth3d">⚡ CYBER-SPRITE 3D</option>
+                <option value="webcam">📷 USAR WEBCAM EN VIVO</option>
+            </select>
+            <button id="btn-take-photo" class="cyber-btn-sm" style="display:none;">📸 TOMAR FOTO</button>
             <select id="camera-select" class="cyber-select" style="display:none;"></select>
         </div>
     </div>
 
-    <!-- PANEL LATERAL DE PERSONALIZACIÓN Y NODO MMO -->
+    <!-- PANEL IZQUIERDO: SECTORES Y SCRAPING -->
     <div class="ctos-panel">
-        <span class="panel-tag">🌍 CIUDAD METAVERSE</span>
-        <button class="city-btn active" data-city="buenosaires">🏛️ BUENOS AIRES 2077</button>
-        <button class="city-btn" data-city="tokyo">⛩️ TOKYO SHIBUYA</button>
-        <button class="city-btn" data-city="chicago">🏙️ CHICAGO ctOS</button>
-
-        <span class="panel-tag" style="margin-top:10px;">🎭 ATAVÍO HACKER</span>
-        <button class="outfit-btn active" data-outfit="dedsec">🏴‍☠️ MÁSCARA Y CAPUCHA</button>
-        <button class="outfit-btn" data-outfit="visor">⚡ VISOR CYBER</button>
-        <button class="outfit-btn" data-outfit="none">👤 SIN MÁSCARA</button>
-
-        <span class="panel-tag" style="margin-top:10px;">💾 REGISTRO PERSISTENTE</span>
-        <button id="btn-save-avatar" class="action-btn">📸 REGISTRAR MI AVATAR</button>
-        <button id="btn-clear-db" class="action-btn danger">🗑️ LIMPIAR CIUDAD</button>
-    </div>
-
-    <!-- PANEL DERECHO DE CHAT / HACKEO COLECTIVO -->
-    <div class="ctos-hack-panel">
-        <span class="panel-tag">💬 CHAT EN TIEMPO REAL</span>
-        <div id="chat-logs" class="chat-box"></div>
-        <div class="chat-input-group">
-            <input type="text" id="chat-input" placeholder="Enviar mensaje..." maxlength="35">
-            <button id="btn-send-chat">▶</button>
+        <span class="panel-tag">🏙️ DOMINIO DE BARRIOS</span>
+        <div class="territory-bar">
+            <div id="territory-fill" class="territory-fill" style="width: 35%;"></div>
         </div>
+        <div class="territory-info">CONTROL DEDSEC: <strong id="territory-pct">35%</strong></div>
 
-        <span class="panel-tag" style="margin-top:10px;">⚡ CONTROL COLECTIVO</span>
-        <button id="btn-hack-lights" class="hack-btn">🚦 HACKEAR SEMÁFOROS</button>
-        <button id="btn-hack-blackout" class="hack-btn">💥 DISPARAR APAGÓN</button>
+        <span class="panel-tag" style="margin-top:8px;">🕵️ HERRAMIENTAS DE RED</span>
+        <button id="btn-run-scraper" class="action-btn">🕷️ EJECUTAR SCRAPER DE DATOS</button>
+        <button id="btn-hack-db" class="action-btn">💾 INFILTRAR BASE DE DATOS</button>
+
+        <span class="panel-tag" style="margin-top:8px;">👤 PERFIL Y DUELOS</span>
+        <div class="profile-stats">
+            <div>EXP: <strong id="xp-val">0 PTS</strong></div>
+            <div>DUELOS 1v1 GANADOS: <strong id="pvp-val">0</strong></div>
+        </div>
     </div>
 
-    <!-- FOOTER E INDICADORES -->
+    <!-- PANEL DERECHO: MISIONES, CLUBES Y CÁMARAS -->
+    <div class="ctos-panel-right">
+        <span class="panel-tag">⚡ MISIONES Y CLUBES DE ZONA</span>
+        <div id="missions-list" class="missions-container"></div>
+    </div>
+
+    <!-- MODAL DE PATRÓN Y MODIFICACIÓN DE SOFTWARE -->
+    <div id="hack-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modal-target-title">RECONFIGURACIÓN DE CÓDIGO ctOS</h3>
+                <span id="close-modal" class="close-btn">✖</span>
+            </div>
+            <p id="modal-desc" class="modal-desc">REPETÍ LA SECUENCIA PARA ALTERAR LA LÓGICA DEL SOFTWARE:</p>
+            <div id="pattern-grid" class="pattern-grid"></div>
+            <div class="modal-footer">
+                <div id="hack-status-text">ESPERANDO SECUENCIA...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
     <div class="ctos-footer">
-        <div class="status-pill" id="status-text">HACÉ CLIC EN "ACTIVAR CÁMARA" O MOVETE CON TECLADO</div>
+        <div class="status-pill" id="status-text">SISTEMA CIBERNÉTICO OPERATIVO // MODO HÍBRIDO ONLINE/OFFLINE</div>
         <div class="controls-hint">
-            🕹️ Moverse: <strong>WASD / FLECHAS</strong> | Escribir: <strong>ENTER</strong>
+            🕹️ Marcha Táctica: <strong>WASD / FLECHAS</strong> | Hackear/Acción: <strong>[E]</strong> | Ver CCTV: <strong>[C]</strong>
         </div>
     </div>
 </div>
