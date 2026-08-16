@@ -65,6 +65,14 @@ const closeModal = document.getElementById('close-modal');
 const patternGrid = document.getElementById('pattern-grid');
 const hackStatusText = document.getElementById('hack-status-text');
 
+// MODAL DE CHAT
+const chatModal = document.getElementById('chat-modal');
+const closeChat = document.getElementById('close-chat');
+const chatAgentId = document.getElementById('chat-agent-id');
+const chatHistory = document.getElementById('chat-history');
+const chatUserInput = document.getElementById('chat-user-input');
+const btnSendChat = document.getElementById('btn-send-chat');
+
 let currentStream = null;
 let aiModel = null;
 let cameraActive = false;
@@ -87,11 +95,18 @@ let isFlying = false;
 let isCctvMode = false;
 let currentHeadingAngle = 0;
 
-// PARADAS Y MISIONES
+// PARÁMETROS DE PROXIMIDAD
+const ENTER_THRESHOLD = 0.0015;
+const EXIT_THRESHOLD = 0.0030;
+const MIN_POPUP_HOLD_TIME = 4000;
+let lastInteractionTime = 0;
+
+// PARADAS, MISIONES Y NPCS
 let poiStops = [];
 let currentActivePoi = null;
 let missions = [];
 let npcs = [];
+let currentChatNpc = null;
 let generatedSequence = [];
 let userSequence = [];
 
@@ -99,7 +114,140 @@ const cropCanvas = document.createElement('canvas');
 cropCanvas.width = 110; cropCanvas.height = 140;
 const cropCtx = cropCanvas.getContext('2d');
 
-// 1. INICIALIZACIÓN CON GEOLOCALIZACIÓN REAL (COMPATIBLE CON CELULAR Y HTTPS)
+let npcInteractionMemory = {};
+
+// PALABRAS CLAVE Y EVALUACIÓN DE ACTITUD
+const USER_ATTITUDES = {
+    AGRESSIVE: ['mierda', 'puto', 'jodete', 'vete', 'atacar', 'matar', 'hackearte', 'estúpido', 'basura', 'coño'],
+    COOPERATIVE: ['bueno', 'vale', 'entendido', 'ayuda', 'sí', 'claro', 'copiado', 'gracias', 'ok'],
+    RESISTANT: ['no', 'nunca', 'déjame', 'paso', 'obligues', 'qué anomalía', 'paso de ti', 'quién eres'],
+    NOSTALGIC_TECH: ['módem', 'bbs', 'phreaking', 'teléfono público', 'cassette', 'diskette', 'pre-2000']
+};
+
+function evaluateAttitude(text) {
+    const lowerText = text.toLowerCase();
+    for (const word of USER_ATTITUDES.AGRESSIVE) {
+        if (lowerText.includes(word)) return 'AGRESSIVE';
+    }
+    for (const word of USER_ATTITUDES.NOSTALGIC_TECH) {
+        if (lowerText.includes(word)) return 'NOSTALGIC_TECH';
+    }
+    for (const word of USER_ATTITUDES.COOPERATIVE) {
+        if (lowerText.includes(word)) return 'COOPERATIVE';
+    }
+    for (const word of USER_ATTITUDES.RESISTANT) {
+        if (lowerText.includes(word)) return 'RESISTANT';
+    }
+    return 'NEUTRAL';
+}
+
+// CONFIGURACIÓN DE ROLES E INTELIGENCIA
+const NPC_ROLES_CONFIG = {
+    security: {
+        color: '#facc15', eyes: '═ ═', accent: '#facc15',
+        maxAggression: 5,
+        consequence: "ctOS Dominion // Protocolo Alpha activado. Unidades de pacificación en camino. Chat bloqueado.",
+        initialGreeting: "ctOS VIGILANCIA CENTRAL // Distrito Central bajo dominio directo. Sométase o asuma las consecuencias.",
+        historyGreetings: {
+            ignored: "Agente. Has estado eludiendo el escaneo. ctOS Dominion // Deténgase y sométase.",
+            success: "Punto ctOS asegurado. Siga con sus labores.",
+            penalty: "ERROR DE AUTORIZACIÓN // Historial de hostilidad detectado. Manténgase alejado."
+        },
+        getResponse: (userInput, npcState) => {
+            let userAttitude = evaluateAttitude(userInput);
+            if (userAttitude === 'AGRESSIVE' || userAttitude === 'RESISTANT') {
+                npcState.aggressionLevel += 2;
+                if (npcState.aggressionLevel >= 3) return "ERROR // Falta de cooperación reiterada. Última advertencia: Sométase.";
+                return "ERROR // Resistencia detectada. Deténgase en nombre del ctOS.";
+            }
+            if (userAttitude === 'COOPERATIVE') {
+                npcState.aggressionLevel = Math.max(0, npcState.aggressionLevel - 1);
+                return "ctOS // Cooperación registrada. Proceda con precaución.";
+            }
+            npcState.aggressionLevel += 0.5;
+            return "ctOS // Esperando confirmación de sumisión. Reportando anomalía...";
+        }
+    },
+    human_pre_2000: {
+        color: '#ff0055', eyes: 'o o', accent: '#00f0ff',
+        maxAggression: 10,
+        consequence: "Pibe... Me rompiste el corazón DedSec. Ya no tengo ganas de hablar de los viejos tiempos. Chau.",
+        initialGreeting: "¿Te conté cómo hacíamos 'Phreaking' en Carlos Paz antes del 2000? Carne y hueso... Hehe. Vení, DedSec.",
+        historyGreetings: {
+            ignored: "Pibe... Te fuiste antes de que pudiera contarte de la BBS DedSec de Carlos Paz.",
+            success: "Hehe... ¡Sí! Aquel módem sonaba como una invasión ctOS.",
+            penalty: "Uff... Mejor ni te acerques. No estoy de humor."
+        },
+        getResponse: (userInput, npcState) => {
+            let userAttitude = evaluateAttitude(userInput);
+            if (userAttitude === 'AGRESSIVE') {
+                npcState.aggressionLevel += 3;
+                return "Eh, pará un poco la mano, DedSec. Somos carne y hueso, no máquinas del ctOS.";
+            }
+            if (userAttitude === 'NOSTALGIC_TECH' || userAttitude === 'COOPERATIVE') {
+                npcState.aggressionLevel = 0;
+                const techResponses = [
+                    "¡Exacto! El sonido del apretón de manos DedSec a 2400 baudios... Música para los oídos.",
+                    "Usábamos un acoplador acústico DedSec en los teléfonos públicos. Phreaking puro.",
+                    "Antes de ctOS, la red DedSec era por BBS. Tardábamos 3 días para un archivo de 1 MB. Carne y hueso... Hehe."
+                ];
+                return techResponses[Math.floor(Math.random() * techResponses.length)];
+            }
+            npcState.aggressionLevel += 1;
+            return "Hehe... Me acuerdo cuando el ctOS era solo un proyecto de la facu. Qué tiempos.";
+        }
+    },
+    malware: {
+        color: '#ff0055', eyes: 'X X', accent: '#ff0055',
+        maxAggression: 6,
+        consequence: "ERROR // PROTOCOLO DE DESINFECCIÓN DETECTADO. Desconectando nodo de chat. Cuidado con tu firewall, DedSec.",
+        initialGreeting: ">> SYSTEM_BREACH_DETECTED. ctOS Dominion // Entidad hostil localizada. ¿Te ayudo a 'optimizar' tu red DedSec?",
+        historyGreetings: {
+            ignored: "Hehe... Me ignoraste antes. ctOS te tiene en la mira. ¿Me dejas entrar a tu sistema?",
+            success: "Interesante... El protocolo funcionó. ctOS me agradece el acceso.",
+            penalty: ">> ALERTA DE SEGURIDAD // Nodo previamente corrupto. Manteniendo distancia."
+        },
+        getResponse: (userInput, npcState) => {
+            let userAttitude = evaluateAttitude(userInput);
+            if (userAttitude === 'COOPERATIVE') {
+                npcState.aggressionLevel = 0;
+                return "Hehe... Excelente elección. Descargando parche de 'rendimiento' DedSec. No mires los permisos, confía.";
+            }
+            if (userAttitude === 'AGRESSIVE' || userAttitude === 'RESISTANT') {
+                npcState.aggressionLevel += 2;
+                return "Hehe... Resistirse es fútil. ctOS Dominion // Analizando contramedidas DedSec.";
+            }
+            npcState.aggressionLevel += 1;
+            return "ERROR // Datos corruptos DedSec detectados. ¿Deseas aplicar una purga de software ctOS?";
+        }
+    },
+    netrunner: {
+        color: '#00f0ff', eyes: '● ●', accent: '#10b981',
+        maxAggression: 4,
+        consequence: "DedSec // La señal se está perdiendo. No puedo trabajar así. Cortando enlace.",
+        initialGreeting: "DedSec. Nodo seguro ctOS Dominion localizado. Necesitamos tu acceso. ¿Te sumas?",
+        historyGreetings: {
+            ignored: "Agente. Te alejaste del nodo. ctOS Dominion // Interferencia DedSec detectada.",
+            success: "Servidor ctOS Dominion infiltrado exitosamente. ctOS ciego temporalmente.",
+            penalty: "ERROR // Firma de red inestable detectada. Enlace no seguro."
+        },
+        getResponse: (userInput, npcState) => {
+            let userAttitude = evaluateAttitude(userInput);
+            if (userAttitude === 'COOPERATIVE') {
+                npcState.aggressionLevel = 0;
+                return "Copiado. Iniciando inyección de código DedSec en 3, 2, 1... Mantén la posición.";
+            }
+            if (userAttitude === 'AGRESSIVE') {
+                npcState.aggressionLevel += 2;
+                return "¡Eh, agente! Tranquilo. ctOS Dominion // Protocolo de seguridad Alpha activado por gritos. Baja la voz.";
+            }
+            npcState.aggressionLevel += 1;
+            return "DedSec // ctOS Dominion está escaneando este nodo. Responde rápido: ¿Entramos?";
+        }
+    }
+};
+
+// 1. INICIALIZACIÓN CON GEOLOCALIZACIÓN REAL
 function initSystem() {
     renderAvatarPresetsUI();
     checkActiveSession();
@@ -144,7 +292,7 @@ function initSystem() {
     initAIAsync();
 }
 
-// 2. SISTEMA DE AUTHENTICACIÓN Y 8 AVATARES PRESELECCIONADOS
+// 2. SISTEMA DE AUTHENTICACIÓN Y AVATARES
 function renderAvatarPresetsUI() {
     avatarPresetsGrid.innerHTML = '';
 
@@ -211,7 +359,7 @@ btnRegister.onclick = () => {
         xp: 0,
         stops: 0,
         pvp: 0,
-        pct: 35
+        pct: territoryControlPct
     };
 
     localStorage.setItem(`ctos_user_${user}`, JSON.stringify(userData));
@@ -277,40 +425,27 @@ function generatePokemonGoStops(center) {
     ];
 }
 
-function checkPoiProximity() {
-    if (!map || isFlying) return;
-    const center = map.getCenter();
-
-    poiStops.forEach(stop => {
-        const dist = Math.hypot(stop.lat - center.lat, stop.lng - center.lng);
-        if (dist < 0.0012 && !stop.claimed && poiPopupCard.style.display === 'none') {
-            openPoiPopup(stop);
-        }
-    });
-}
-
 function openPoiPopup(stop) {
+    syncUI('poi');
     currentActivePoi = stop;
     poiTitle.innerText = stop.title;
     poiDesc.innerText = stop.desc;
     poiPopupCard.style.display = 'block';
+    lastInteractionTime = Date.now();
     statusText.innerText = `📍 ACABAS DE INGRESAR A UNA PARADA DE CONOCIMIENTO`;
 }
 
 btnClaimPoi.onclick = () => {
     if (currentActivePoi) {
-        currentActivePoi.claimed = true;
-        playerXP += 100;
-        visitedStops += 1;
-        territoryControlPct = Math.min(100, territoryControlPct + 5);
-        saveProfileData();
-
         poiPopupCard.style.display = 'none';
-        statusText.innerText = "✔ CONOCIMIENTO Y DATOS EXTRAÍDOS CON ÉXITO";
+        openHackMinigame(currentActivePoi);
     }
 };
 
-closePoi.onclick = () => poiPopupCard.style.display = 'none';
+closePoi.onclick = () => {
+    poiPopupCard.style.display = 'none';
+    currentActivePoi = null;
+};
 
 // 4. ESTUDIO CREADOR DE AVATAR
 btnOpenAvatarEditor.onclick = () => avatarModal.style.display = 'flex';
@@ -435,7 +570,7 @@ function initAIAsync() {
     });
 }
 
-// 5. MISIONES Y NPCS
+// 5. MISIONES Y NPCS CON ESTADO INTERNO COMPLETO
 function generateLocalMissions(center) {
     missions = [
         { id: 1, type: 'ANTENA', title: "ANTENA ctOS", desc: "Desbloquear calles del distrito", lat: center.lat + 0.0015, lng: center.lng + 0.002, done: false },
@@ -447,13 +582,21 @@ function generateLocalMissions(center) {
 
 function spawnMapNPCs(center) {
     npcs = [];
-    for (let i = 0; i < 5; i++) {
+    const roles = Object.keys(NPC_ROLES_CONFIG);
+    for (let i = 0; i < 6; i++) {
+        const role = roles[Math.floor(Math.random() * roles.length)];
         npcs.push({
-            id: `NPC_IA_${i+1}`,
-            lat: center.lat + (Math.random() - 0.5) * 0.005,
-            lng: center.lng + (Math.random() - 0.5) * 0.005,
-            vx: (Math.random() - 0.5) * 0.00005,
-            vy: (Math.random() - 0.5) * 0.00005
+            id: `ENTIDAD_${Math.floor(100 + Math.random() * 900)}`,
+            role: role,
+            lat: center.lat + (Math.random() - 0.5) * 0.008,
+            lng: center.lng + (Math.random() - 0.5) * 0.008,
+            vx: (Math.random() - 0.5) * 0.00008,
+            vy: (Math.random() - 0.5) * 0.00008,
+            isPaused: false,
+            state: {
+                aggressionLevel: 0,
+                isBlocked: false
+            }
         });
     }
 }
@@ -480,6 +623,7 @@ function renderMissionsList() {
 }
 
 function connectToCCTV(mission) {
+    syncUI('cctv');
     isCctvMode = true;
     cctvIdSpan.innerText = mission.id;
     cctvOverlay.style.display = 'block';
@@ -492,6 +636,7 @@ btnExitCctv.onclick = () => {
 };
 
 document.getElementById('btn-run-scraper').onclick = () => {
+    syncUI('scraper');
     statusText.innerText = "🕷️ SCRAPER ACTIVO: EXTRACCIÓN DE NODOS Y FINANZAS URBANAS...";
     setTimeout(() => {
         playerXP += 80; territoryControlPct = Math.min(100, territoryControlPct + 5);
@@ -502,7 +647,8 @@ document.getElementById('btn-run-scraper').onclick = () => {
 
 document.getElementById('btn-hack-db').onclick = () => openHackMinigame({ id: 99, title: "BASE DE DATOS REGIONAL", desc: "Infiltrar software central" });
 
-function openHackMinigame(mission) {
+function openHackMinigame(target) {
+    syncUI('hack');
     userSequence = []; generatedSequence = [];
     for (let i = 0; i < 4; i++) generatedSequence.push(Math.floor(1 + Math.random() * 6));
 
@@ -548,6 +694,11 @@ function handleNodeClick(num, btnElement) {
     }
 
     if (userSequence.length === generatedSequence.length) {
+        if (currentActivePoi && !currentActivePoi.claimed) {
+            currentActivePoi.claimed = true;
+            visitedStops += 1;
+            statusText.innerText = "✔ CONOCIMIENTO Y DATOS EXTRAÍDOS CON ÉXITO DE LA PARADA";
+        }
         playerXP += 150; territoryControlPct = Math.min(100, territoryControlPct + 10);
         saveProfileData(); renderMissionsList();
         setTimeout(() => hackModal.style.display = 'none', 1200);
@@ -555,6 +706,136 @@ function handleNodeClick(num, btnElement) {
 }
 
 closeModal.onclick = () => hackModal.style.display = 'none';
+
+// --- SISTEMA DE CHAT CON NPCS ---
+
+function openChatModal(npc) {
+    syncUI('chat');
+    currentChatNpc = npc;
+    npc.isPaused = true;
+
+    const config = NPC_ROLES_CONFIG[npc.role];
+    chatAgentId.innerText = `${npc.id} // ROLE: ${npc.role.toUpperCase()}`;
+    chatAgentId.style.color = config.color;
+
+    const aggressionPct = npc.state.aggressionLevel / config.maxAggression;
+    const modalCard = chatModal.querySelector('.modal-card');
+    if (aggressionPct > 0.6) {
+        modalCard.classList.add('hostile');
+    } else {
+        modalCard.classList.remove('hostile');
+    }
+
+    chatHistory.innerHTML = '';
+    chatUserInput.value = '';
+
+    if (npc.state.isBlocked) {
+        chatUserInput.disabled = true;
+        chatUserInput.placeholder = ">> ACCESO DENEGADO POR LA ENTIDAD";
+        btnSendChat.disabled = true;
+    } else {
+        chatUserInput.disabled = false;
+        chatUserInput.placeholder = "Enviar mensaje encriptado...";
+        btnSendChat.disabled = false;
+    }
+
+    let greeting = config.initialGreeting;
+    const history = npcInteractionMemory[npc.id] || {};
+
+    if (npc.state.isBlocked) {
+        greeting = config.consequence;
+    } else if (history.lastInteraction === 'ignored') {
+        greeting = config.historyGreetings.ignored;
+    } else if (history.lastInteraction === 'success') {
+        greeting = config.historyGreetings.success;
+    } else if (history.lastInteraction === 'penalty') {
+        greeting = config.historyGreetings.penalty;
+    }
+
+    addChatMessage(greeting, npc.role);
+    updateNpcMemory(npc.id, 'started');
+
+    chatModal.style.display = 'flex';
+    lastInteractionTime = Date.now();
+    if (!npc.state.isBlocked) chatUserInput.focus();
+}
+
+function addChatMessage(message, role) {
+    const p = document.createElement('div');
+    const config = NPC_ROLES_CONFIG[role];
+    p.innerHTML = `<strong class="npc-${role}" style="color: ${config ? config.color : '#00f0ff'}">${role.toUpperCase()} // </strong> ${message}`;
+    chatHistory.appendChild(p);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function handleUserChatSubmit() {
+    const msg = chatUserInput.value.trim();
+    if (!msg || !currentChatNpc || currentChatNpc.state.isBlocked) return;
+
+    const userP = document.createElement('div');
+    userP.innerHTML = `<strong>AGENTE // </strong> ${msg}`;
+    chatHistory.appendChild(userP);
+
+    chatUserInput.value = '';
+    lastInteractionTime = Date.now();
+
+    const config = NPC_ROLES_CONFIG[currentChatNpc.role];
+    const response = config.getResponse(msg, currentChatNpc.state);
+
+    if (currentChatNpc.state.aggressionLevel >= config.maxAggression) {
+        currentChatNpc.state.isBlocked = true;
+
+        setTimeout(() => {
+            addChatMessage(config.consequence, currentChatNpc.role);
+            chatUserInput.disabled = true;
+            chatUserInput.placeholder = ">> ACCESO DENEGADO POR LA ENTIDAD";
+            btnSendChat.disabled = true;
+
+            statusText.innerText = `>> ALERTA // Enlace con ${currentChatNpc.id} cortado. Penalización DedSec activada.`;
+            updateNpcMemory(currentChatNpc.id, 'penalty');
+        }, 1000);
+
+        return;
+    }
+
+    setTimeout(() => {
+        addChatMessage(response, currentChatNpc.role);
+        const aggressionPct = currentChatNpc.state.aggressionLevel / config.maxAggression;
+        const modalCard = chatModal.querySelector('.modal-card');
+        if (aggressionPct > 0.6) {
+            modalCard.classList.add('hostile');
+        }
+        updateNpcMemory(currentChatNpc.id, 'chatting');
+    }, 1000);
+}
+
+btnSendChat.onclick = handleUserChatSubmit;
+chatUserInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleUserChatSubmit();
+});
+
+closeChat.onclick = () => {
+    if (currentChatNpc) {
+        currentChatNpc.isPaused = false;
+        const config = NPC_ROLES_CONFIG[currentChatNpc.role];
+        if (currentChatNpc.state.aggressionLevel > (config.maxAggression / 2) && !currentChatNpc.state.isBlocked) {
+            updateNpcMemory(currentChatNpc.id, 'penalty');
+        } else {
+            updateNpcMemory(currentChatNpc.id, 'cancelled');
+        }
+        currentChatNpc = null;
+    }
+    chatModal.style.display = 'none';
+};
+
+function updateNpcMemory(npcId, interactionType) {
+    if (!npcInteractionMemory[npcId]) {
+        npcInteractionMemory[npcId] = { count: 0 };
+    }
+    npcInteractionMemory[npcId].lastInteraction = interactionType;
+    npcInteractionMemory[npcId].count++;
+    npcInteractionMemory[npcId].timestamp = Date.now();
+}
 
 function saveProfileData() {
     const data = {
@@ -609,7 +890,6 @@ const keys = {};
 window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 
-// CONTROLES TÁCTILES MÓVILES
 const bindTouchControl = (btnId, keyName) => {
     const btn = document.getElementById(btnId);
     if (!btn) return;
@@ -624,9 +904,9 @@ bindTouchControl('btn-left', 'a');
 bindTouchControl('btn-right', 'd');
 
 function handleMapMovement() {
-    if (!map || isFlying || isCctvMode) return;
+    if (!map || isFlying || isCctvMode || chatModal.style.display === 'flex') return;
     const center = map.getCenter();
-    const step = 0.00006;
+    const step = 0.00008;
 
     let dLat = 0, dLng = 0;
     if (keys['w'] || keys['arrowup']) dLat += step;
@@ -637,13 +917,81 @@ function handleMapMovement() {
     if (dLat !== 0 || dLng !== 0) {
         map.panTo([center.lng + dLng, center.lat + dLat], { animate: false });
         currentHeadingAngle = Math.atan2(dLng, dLat) * (180 / Math.PI);
-        checkPoiProximity();
     }
+}
+
+// LOGICA DE PROXIMIDAD Y CONTROL DE PANELES
+function checkProximityAndManageUI() {
+    if (!map || isFlying || isCctvMode) return;
+    const center = map.getCenter();
+    const now = Date.now();
+
+    const poiPopupActive = poiPopupCard.style.display === 'block';
+    const chatActive = chatModal.style.display === 'flex';
+    const hackActive = hackModal.style.display === 'flex';
+
+    if (poiPopupActive) {
+        if (currentActivePoi) {
+            const dist = Math.hypot(currentActivePoi.lat - center.lat, currentActivePoi.lng - center.lng);
+            if (dist > EXIT_THRESHOLD && (now - lastInteractionTime > MIN_POPUP_HOLD_TIME)) {
+                poiPopupCard.style.display = 'none';
+                currentActivePoi = null;
+                statusText.innerText = "DEDSEC NETRUNNER // Fuera de rango de la parada.";
+            }
+        }
+        return;
+    }
+
+    if (chatActive) {
+        if (currentChatNpc) {
+            const dist = Math.hypot(currentChatNpc.lat - center.lat, currentChatNpc.lng - center.lng);
+            if (dist > EXIT_THRESHOLD && (now - lastInteractionTime > MIN_POPUP_HOLD_TIME)) {
+                updateNpcMemory(currentChatNpc.id, 'ignored');
+                currentChatNpc.isPaused = false;
+                currentChatNpc = null;
+                chatModal.style.display = 'none';
+                statusText.innerText = "DEDSEC NETRUNNER // Entidad de red ignorada.";
+            }
+        }
+        return;
+    }
+
+    if (hackActive) return;
+
+    for (const stop of poiStops) {
+        const dist = Math.hypot(stop.lat - center.lat, stop.lng - center.lng);
+        if (dist < ENTER_THRESHOLD && !stop.claimed) {
+            openPoiPopup(stop);
+            return;
+        }
+    }
+
+    for (const npc of npcs) {
+        const dist = Math.hypot(npc.lat - center.lat, npc.lng - center.lng);
+        if (dist < ENTER_THRESHOLD) {
+            openChatModal(npc);
+            return;
+        }
+    }
+}
+
+function syncUI(currentLayoutType) {
+    const layouts = {
+        poi: poiPopupCard,
+        hack: hackModal,
+        cctv: cctvOverlay,
+        chat: chatModal
+    };
+
+    Object.keys(layouts).forEach(type => {
+        if (type !== currentLayoutType) {
+            layouts[type].style.display = 'none';
+        }
+    });
 }
 
 // 7. BUCLE RENDERIZADO 60 FPS
 function renderLoop() {
-    // Sincronizar dimensiones con la pantalla del dispositivo
     const rect = canvas.getBoundingClientRect();
     if (canvas.width !== rect.width || canvas.height !== rect.height) {
         canvas.width = rect.width;
@@ -654,6 +1002,7 @@ function renderLoop() {
 
     handleMapMovement();
     updateNPCs();
+    checkProximityAndManageUI();
 
     renderPokemonGoStopsCanvas();
     renderMissionNodesCanvas();
@@ -668,8 +1017,10 @@ function renderLoop() {
 
 function updateNPCs() {
     npcs.forEach(npc => {
-        npc.lat += npc.vx;
-        npc.lng += npc.vy;
+        if (!npc.isPaused) {
+            npc.lat += npc.vx;
+            npc.lng += npc.vy;
+        }
     });
 }
 
@@ -681,8 +1032,18 @@ function renderNPCsOnMap() {
         const sx = canvas.width / 2 + (pt.x - cpt.x);
         const sy = canvas.height / 2 + (pt.y - cpt.y);
 
-        ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#facc15'; ctx.font = '8px Consolas'; ctx.fillText(npc.id, sx - 15, sy - 8);
+        const roleConfig = NPC_ROLES_CONFIG[npc.role];
+
+        ctx.fillStyle = roleConfig ? roleConfig.accent : '#00f0ff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '8px Consolas';
+        ctx.fillText(npc.id, sx - 20, sy - 15);
+        ctx.fillStyle = roleConfig ? roleConfig.color : '#00f0ff';
+        ctx.fillText(npc.role.toUpperCase(), sx - 20, sy - 6);
     });
 }
 

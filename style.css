@@ -42,6 +42,24 @@ body {
     pointer-events: none;
 }
 
+button, input, select, .action-btn, .poi-action-btn, .auth-actions button, .close-btn {
+    pointer-events: auto !important;
+}
+
+/* ESTILO INPUT BLOQUEADO Y CARD HOSTIL */
+.cyber-input:disabled {
+    background-color: rgba(255, 0, 85, 0.2);
+    border-color: #ff0055;
+    color: #ff0055;
+    cursor: not-allowed;
+    box-shadow: 0 0 10px rgba(255, 0, 85, 0.5);
+}
+
+.chat-card.hostile {
+    border-color: #ff0055 !important;
+    box-shadow: 0 0 30px rgba(255, 0, 85, 0.8) !important;
+}
+
 /* OVERLAY CCTV */
 .cctv-frame {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -155,6 +173,7 @@ body {
     box-shadow: 0 0 35px var(--cyan);
     padding: 16px; z-index: 80;
     animation: slideUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    pointer-events: auto;
 }
 
 @keyframes slideUp {
@@ -185,10 +204,12 @@ body {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(2, 4, 10, 0.92); z-index: 100; backdrop-filter: blur(8px);
     display: flex; justify-content: center; align-items: center;
+    pointer-events: auto;
 }
 .modal-card {
     background: var(--panel-bg); border: 2px solid var(--cyan);
     box-shadow: 0 0 40px var(--cyan); padding: 20px; border-radius: 8px; width: 340px; text-align: center;
+    pointer-events: auto;
 }
 .modal-large { width: 500px; text-align: left; }
 
@@ -197,7 +218,7 @@ body {
     margin-bottom: 12px; border-bottom: 1px solid var(--border-glow); padding-bottom: 6px;
 }
 .modal-header h3 { font-size: 11px; color: var(--cyan); }
-.close-btn { cursor: pointer; color: var(--magenta); font-weight: bold; }
+.close-btn { cursor: pointer; color: var(--magenta); font-weight: bold; pointer-events: auto; }
 
 /* PANTALLA DE AUTHENTICACIÓN */
 .auth-card {
@@ -216,6 +237,7 @@ body {
     border-radius: 4px;
     outline: none;
     margin-bottom: 8px;
+    pointer-events: auto;
 }
 
 .cyber-input:focus {
@@ -243,6 +265,7 @@ body {
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
+    pointer-events: auto;
 }
 
 .avatar-preset-card canvas {
@@ -302,6 +325,7 @@ body {
 .cyber-select-full {
     width: 100%; background: rgba(0,0,0,0.8); border: 1px solid var(--cyan);
     color: var(--cyan); padding: 6px; font-size: 10px; outline: none; border-radius: 4px;
+    pointer-events: auto;
 }
 .action-btn-full {
     width: 100%; background: var(--magenta); border: none; color: #fff;
@@ -313,40 +337,45 @@ body {
     width: 55px; height: 55px; background: #0f172a; border: 2px solid var(--cyan);
     color: var(--cyan); font-weight: bold; font-size: 15px; border-radius: 8px;
     cursor: pointer; display: flex; justify-content: center; align-items: center; margin: 0 auto;
+    pointer-events: auto;
 }
 .node-btn.active { background: var(--cyan); color: #000; box-shadow: 0 0 20px var(--cyan); }
 .node-btn.error { background: var(--magenta); border-color: var(--magenta); color: #fff; }
 
 .modal-footer { font-size: 10px; font-weight: bold; color: var(--yellow); }
 
-.ctos-footer {
-    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-    display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 20; pointer-events: none;
-}
-.status-pill {
-    font-size: 10px; background: rgba(0,0,0,0.85); padding: 4px 14px;
-    border-radius: 4px; color: var(--yellow); border: 1px solid var(--border-glow);
-}
-.controls-hint { font-size: 9px; color: #94a3b8; background: rgba(0,0,0,0.7); padding: 3px 10px; border-radius: 10px; }
-.controls-hint strong { color: var(--cyan); }
-
-/* CAPAS TRANSPARENTES QUE NO DEBEN INTERCEPTAR CLICS */
-#stageCanvas, .scanlines {
-    pointer-events: none !important;
+/* ESTILOS DE CHAT */
+.chat-card {
+    width: 550px;
+    height: 400px;
+    display: flex;
+    flex-direction: column;
 }
 
-/* ASEGURAR QUE LOS ELEMENTOS INTERACTIVOS RECIBAN CLICS/TOQUES */
-button, input, select, .action-btn, .poi-action-btn,
-.action-btn-secondary, .modal-card, .avatar-preset-card,
-.mission-card, .close-btn, .node-btn {
-    pointer-events: auto !important;
-    touch-action: manipulation;
+.chat-history {
+    flex: 1;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border-glow);
+    padding: 10px;
+    margin-bottom: 10px;
+    font-size: 10px;
+    color: #cbd5e1;
 }
 
-/* FIX PARA MODALES: QUE PERMITAN INTERACCIÓN INTERNA */
-.modal-overlay {
-    pointer-events: auto;
+.chat-history div { margin-bottom: 6px; line-height: 1.3; }
+.chat-history strong { color: var(--cyan); }
+.chat-history strong.npc-security { color: var(--yellow); }
+.chat-history strong.npc-human_pre_2000 { color: var(--magenta); }
+.chat-history strong.npc-malware { color: var(--magenta); }
+.chat-history strong.npc-netrunner { color: var(--cyan); }
+
+.chat-input-row {
+    display: flex;
+    gap: 8px;
 }
+.chat-input-row input { margin-bottom: 0; }
+.chat-input-row button { width: 100px; }
 
 /* JOYSTICK PARA CELULARES */
 .mobile-dpad {
@@ -371,7 +400,17 @@ button, input, select, .action-btn, .poi-action-btn,
     touch-action: manipulation;
 }
 
-/* ADAPTACIÓN PARA CELULARES Y TABLETS (PANTALLAS CHICAS) */
+.ctos-footer {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 20; pointer-events: none;
+}
+.status-pill {
+    font-size: 10px; background: rgba(0,0,0,0.85); padding: 4px 14px;
+    border-radius: 4px; color: var(--yellow); border: 1px solid var(--border-glow);
+}
+.controls-hint { font-size: 9px; color: #94a3b8; background: rgba(0,0,0,0.7); padding: 3px 10px; border-radius: 10px; }
+.controls-hint strong { color: var(--cyan); }
+
 @media (max-width: 768px) {
     #ctos-viewport {
         width: 100vw;
@@ -380,7 +419,6 @@ button, input, select, .action-btn, .poi-action-btn,
         border: none;
     }
 
-    /* Ajuste de controles superiores */
     .ctos-header {
         flex-direction: column;
         align-items: stretch;
@@ -391,7 +429,6 @@ button, input, select, .action-btn, .poi-action-btn,
         max-width: 100%;
     }
 
-    /* Reducción de paneles laterales para no tapar la vista del mapa */
     .ctos-panel {
         width: 160px;
         top: 110px;
@@ -405,14 +442,13 @@ button, input, select, .action-btn, .poi-action-btn,
         padding: 6px;
     }
 
-    /* Tarjeta estilo Pokémon GO adaptable a pantalla táctil */
     .poi-card-up {
         width: 90%;
         bottom: 60px;
         padding: 12px;
     }
 
-    .modal-large, .auth-card {
+    .modal-large, .auth-card, .chat-card {
         width: 92% !important;
         padding: 14px;
     }
